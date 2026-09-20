@@ -1,0 +1,73 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #24282b;
+  color: #edf0eb;
+  font-family: Saira, sans-serif;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+}
+main {
+  width: min(100%, 650px);
+  container-type: inline-size;
+}
+h1 {
+  font-size: 26px;
+  margin: 0;
+  font-weight: 600;
+}
+p {
+  color: #afbac1;
+  margin: 5px 0 22px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.device {
+  padding: 14px;
+  background: #080b0d;
+  border-radius: calc((100cqw - 30px) * 0.2589641434 + 14px);
+  box-shadow: 0 24px 60px #0006;
+  border: 1px solid #41474b;
+}
+#app {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 251 / 205;
+}
+#app > .pedalboard {
+  transform-origin: top left;
+  transform: scale(var(--panel-scale, 2));
+}
+footer {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  color: #afbac1;
+  font-size: 13px;
+}
+footer button,
+select {
+  font: inherit;
+  background: #343d45;
+  color: #edf0eb;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 13px;
+  cursor: pointer;
+}
+.preview-note {
+  display: block;
+  color: #819098;
+  font-size: 12px;
+  margin-top: 16px;
+}
+.pitch-control {
+  margin-top: 12px;
+  font-size: 13px;
+}

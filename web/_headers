@@ -1,0 +1,16 @@
+# The pedal runs on an AudioWorklet over shared memory, and a browser only hands
+# out SharedArrayBuffer to a cross-origin-isolated document. Without these two
+# headers the page loads, the panel draws, and the audio thread never starts --
+# which is the same pair scripts/serve-web.mjs sets for local serving.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+
+# Everything under dist/ is asked for with a version on the URL that is the hash
+# of its own bytes (scripts/stamp-web-build.mjs, and the ASSETS table it writes
+# into index.html), so a given URL can never mean two different files. That is
+# what immutable is for. index.html, which names the versions, falls under the
+# rule above and carries no Cache-Control of its own, so it is revalidated -- it
+# is the one file that has to be.
+/dist/*
+  Cache-Control: public, max-age=31536000, immutable

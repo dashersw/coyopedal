@@ -1,0 +1,1555 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>coyopedal — the pedal, in your browser</title>
+
+    <!-- The card a link to this page unfurls into. og.png is a real screenshot
+         of the panel with the pedal engaged, taken from this page's own
+         framebuffer, so it is the thing itself rather than a mockup of it.
+
+         og:image has to be absolute, and it names the pages.dev origin rather
+         than the custom domain on purpose: that origin is live the moment a
+         deployment lands and stays live afterwards, so a link shared before
+         DNS for coyopedal.playtaurus.com has propagated still unfurls. -->
+    <meta
+      name="description"
+      content="A guitar amp modeller that runs on an ESP32-S3, playing a full Neural Amp Modeler A2-Full profile in real time — and its firmware, compiled to WebAssembly, playing your guitar in this tab."
+    />
+    <link rel="canonical" href="https://coyopedal.playtaurus.com/" />
+    <meta name="theme-color" content="#08080a" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="coyopedal" />
+    <meta property="og:url" content="https://coyopedal.playtaurus.com/" />
+    <meta
+      property="og:title"
+      content="coyopedal — a neural amp modeller on an ESP32-S3, running in your browser"
+    />
+    <meta
+      property="og:description"
+      content="The pedal's own firmware — the same UI, the same DSP, the same NAM A2-Full profile — compiled to WebAssembly and playing your guitar in this tab."
+    />
+    <meta property="og:image" content="https://coyopedal.pages.dev/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="The coyopedal panel, engaged: the preset Silver Lining on a Diezel Herbert C1 V30 profile, with the Gate, Comp, Amp and Verb blocks lit."
+    />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="coyopedal — a neural amp modeller on an ESP32-S3, running in your browser"
+    />
+    <meta
+      name="twitter:description"
+      content="The pedal's own firmware — the same UI, the same DSP, the same NAM A2-Full profile — compiled to WebAssembly and playing your guitar in this tab."
+    />
+    <meta name="twitter:image" content="https://coyopedal.pages.dev/og.png" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #e7e7ee;
+        --dim: #7e7e8c;
+        --line: #23232a;
+        --panel: #101014;
+        --accent: #7fd1c1;
+        --hot: #f2c14e;
+        --clip: #f2604e;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #08080a;
+        color: var(--ink);
+        font:
+          15px/1.6 ui-sans-serif,
+          -apple-system,
+          'Segoe UI',
+          Inter,
+          system-ui,
+          sans-serif;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 48px 16px 72px;
+        gap: 32px;
+      }
+      main {
+        width: 100%;
+        max-width: 720px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+      }
+      header {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 40px;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        font-weight: 650;
+      }
+      h1 span {
+        color: var(--accent);
+      }
+      a {
+        color: var(--accent);
+        text-decoration-color: #7fd1c150;
+        text-underline-offset: 3px;
+      }
+      a:hover {
+        text-decoration-color: var(--accent);
+      }
+      .tagline {
+        margin: 0;
+        color: var(--dim);
+        font-size: 17px;
+      }
+      .tagline b {
+        color: var(--ink);
+        font-weight: 550;
+      }
+      #panel {
+        border-radius: 26px;
+        background: #000;
+        box-shadow:
+          0 0 0 10px #17171b,
+          0 30px 70px #000a;
+        touch-action: none;
+        cursor: pointer;
+        /* The panel may shrink to fit a narrow screen, but it may not change
+           SHAPE: a fixed height under a shrinking width squeezed it
+           horizontally on a phone, which is the one thing a panel that is meant
+           to be a photograph of the hardware must never do. The ratio is the
+           board's, 502x410. */
+        max-width: 100%;
+        height: auto;
+        aspect-ratio: 502 / 410;
+      }
+      .rig {
+        width: 100%;
+        max-width: 560px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      button,
+      select {
+        font: inherit;
+        font-size: 14px;
+        color: var(--ink);
+        background: #1b1b21;
+        border: 1px solid #2c2c33;
+        border-radius: 9px;
+        padding: 8px 14px;
+      }
+      select {
+        max-width: 15em;
+      }
+      #start:not(:disabled) {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #06110e;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled,
+      select:disabled {
+        opacity: 0.45;
+      }
+      #channel {
+        min-width: 6.5em;
+      }
+      .meters {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .meter {
+        display: grid;
+        grid-template-columns: 2.6em 1fr 5.4em;
+        align-items: center;
+        gap: 10px;
+        font:
+          12px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        color: var(--dim);
+      }
+      .meter .value {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        /* "-54.0 dB" is one reading, not two words: wrapped onto a second line
+           it pushed the track out of its row. */
+        white-space: nowrap;
+      }
+      /* The scale, drawn once: the ticks are where a player looks, not decoration.
+         -12 dBFS is where the fill turns amber and 0 is where it turns red. */
+      .track {
+        position: relative;
+        height: 12px;
+        border-radius: 3px;
+        background: #191920;
+        overflow: hidden;
+      }
+      .track::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent 74.9%, #2b2b34 75%, transparent 75.1%);
+        pointer-events: none;
+      }
+      .fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 0;
+        border-radius: 3px;
+        background: var(--accent);
+        transform-origin: left;
+        /* Fast attack, slow release: a meter that fell as fast as it rose would
+           be unreadable at 20 updates a second. The rise is instant because a
+           transient is the thing you are watching for. */
+        transition: width 150ms linear;
+      }
+      .fill.hot {
+        background: var(--hot);
+      }
+      .fill.clip {
+        background: var(--clip);
+      }
+      /* Peak hold: where the loudest of the last second landed, which is the
+         number a player sets input gain by. */
+      .peak {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        left: 0;
+        background: #f4f4f8;
+        opacity: 0;
+        transition: left 150ms linear;
+      }
+      .peak.lit {
+        opacity: 0.85;
+      }
+      #status {
+        color: var(--dim);
+        font:
+          12px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        text-align: center;
+        min-height: 2.2em;
+        max-width: 60em;
+      }
+      .about {
+        width: 100%;
+        max-width: 560px;
+        display: grid;
+        gap: 14px;
+        color: var(--dim);
+        font-size: 14px;
+      }
+      .about h2 {
+        margin: 0;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #5c5c68;
+        font-weight: 600;
+      }
+      .about p {
+        margin: 0;
+      }
+      .about b {
+        color: var(--ink);
+        font-weight: 550;
+      }
+      footer {
+        width: 100%;
+        max-width: 560px;
+        border-top: 1px solid var(--line);
+        padding-top: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        color: #5c5c68;
+        font-size: 13px;
+      }
+      footer .spacer {
+        flex: 1;
+      }
+      code {
+        font:
+          12px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        color: #a8a8b6;
+      }
+      code {
+        font:
+          12px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        color: #a8a8b6;
+      }
+      kbd {
+        background: #1b1b21;
+        border: 1px solid #2c2c33;
+        border-radius: 4px;
+        padding: 1px 5px;
+        font:
+          11px/1 ui-monospace,
+          Menlo,
+          monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1><span>coyo</span>pedal</h1>
+        <p class="tagline">
+          A guitar amp modeller that runs on an ESP32-S3, playing a full
+          <b>Neural Amp Modeler A2-Full</b> profile in real time. <b>This is its firmware</b> — the
+          same UI, the same DSP, the same neural amp model — compiled to WebAssembly and playing
+          your guitar in this tab.
+        </p>
+      </header>
+
+      <canvas id="panel" width="502" height="410"></canvas>
+
+      <section class="rig">
+        <div class="controls">
+          <button id="start" disabled>Start audio</button>
+          <select id="device" disabled>
+            <option>allow the microphone to see your inputs</option>
+          </select>
+          <select id="channel" disabled title="which input channel the pedal takes">
+            <option>ch 1</option>
+          </select>
+        </div>
+        <!-- The folder picker for browsers without showDirectoryPicker. Not a
+             control on the page: the pedal asks for a folder from its own "SD
+             card" row, and this input is only how that ask reaches Safari and
+             Firefox. -->
+        <input id="folder-input" type="file" webkitdirectory multiple hidden />
+        <div class="meters">
+          <div class="meter">
+            <span>in</span>
+            <span class="track"
+              ><i class="fill" id="in-fill"></i><i class="peak" id="in-peak"></i
+            ></span>
+            <span class="value" id="in-value">—</span>
+          </div>
+          <div class="meter">
+            <span>out</span>
+            <span class="track"
+              ><i class="fill" id="out-fill"></i><i class="peak" id="out-peak"></i
+            ></span>
+            <span class="value" id="out-value">—</span>
+          </div>
+          <div class="meter">
+            <span>dsp</span>
+            <span class="track"><i class="fill" id="load-fill"></i></span>
+            <span class="value" id="load-value">—</span>
+          </div>
+        </div>
+      </section>
+
+      <div id="status">loading the panel…</div>
+
+      <section class="about">
+        <h2>What you are looking at</h2>
+        <p>
+          The screen above is not a picture of the pedal and not a re-implementation of it. The
+          firmware's UI was compiled ahead of time to C++ and linked with the same layout and paint
+          engine the hardware runs; the amp, the cabinet, the effects and the tuner are the board's
+          own DSP on an audio thread. The presets and profiles are the bytes the board is flashed
+          with.
+        </p>
+        <p>
+          The amp is a <b>NAM A2-Full</b> profile — the full architecture, not a trimmed or
+          distilled stand-in — running at 48 kHz on a 240 MHz dual-core microcontroller. That is the
+          whole point of the project, and it is the same network weights here as on the board.
+        </p>
+        <p>
+          The browser supplies a canvas, your pointer, an input device and somewhere to keep
+          presets. Everything else is the pedal. Touch the screen the way you would the real one —
+          tap a block to toggle it, hold one to edit it. <kbd>Esc</kbd> goes back.
+        </p>
+        <h2>Your own profiles</h2>
+        <p>
+          The board loads captures off an SD card, and this page will take a
+          <b>folder</b> as one. Ask for it from the pedal: <b>Amplifiers</b> → <b>SD card</b>, which
+          is on that screen whether or not there is anything behind it, the same row the hardware
+          has. Every <code>.nam</code> or <code>.namb</code> in the folder you pick, subfolders and
+          all, then appears under it. It is the firmware's SD code path, answered from your folder,
+          so the captures get the same names and the same ids they would have on a card; fill a
+          folder here, copy it to a card, and the board reads it.
+        </p>
+        <p>
+          An original <code>.nam</code> is a JSON capture, and the S3 plays a fixed-point form of
+          it, so the first load of one runs the same tuner the board runs — about a minute, with the
+          panel frozen while it works. The result is written back beside the file as
+          <code>.s3cache</code>, exactly as the board writes it, and neither this page nor the board
+          ever prepares that capture again. Your presets are mirrored into the folder too, so they
+          travel with the captures they name.
+        </p>
+        <p>
+          Chrome and Edge can write back to the folder. Safari and Firefox will only let a page read
+          one, so there everything the pedal writes is kept in the browser's own storage instead —
+          the folder is remembered either way, and the pedal comes back up with your captures in it.
+        </p>
+        <h2>Where it normally runs</h2>
+        <p>
+          On a
+          <a
+            href="https://www.waveshare.com/esp32-s3-touch-amoled-2.06.htm"
+            target="_blank"
+            rel="noreferrer"
+            >Waveshare ESP32-S3-Touch-AMOLED-2.06</a
+          >
+          — a 410 × 502 AMOLED with a capacitive touch panel, which is the screen you are poking at
+          above. But the pedal is not written for that board in particular: it is a
+          <a href="https://geastack.com" target="_blank" rel="noreferrer">Gea Stack</a> app, so it
+          runs on any target Gea Stack supports — macOS, Windows, Linux, iOS, Android and the web.
+          This tab is one of them.
+        </p>
+      </section>
+      <!-- Serving this page hands every visitor a copy of module.wasm, which is
+           conveying a GPL binary, so the corresponding source has to be offered
+           in the same place. The build stamps the commit these bytes came from
+           into the link (scripts/stamp-web-build.mjs), because "the source" of
+           a binary means the source it was built from, not whatever is on the
+           branch today. -->
+      <footer>
+        <span
+          >Source —
+          <a
+            id="source"
+            href="https://github.com/dashersw/coyopedal/tree/6860087eaf71326246ddcea023907e56f4e5e55a"
+            target="_blank"
+            rel="noreferrer"
+            >github.com/dashersw/coyopedal @ 6860087</a
+          ></span
+        >
+        <span class="spacer"></span>
+        <span
+          ><a
+            href="https://github.com/dashersw/coyopedal/blob/main/LICENSE"
+            target="_blank"
+            rel="noreferrer"
+            >GPL-3.0</a
+          ></span
+        >
+        <span>© 2026 Armagan Amcalar</span>
+      </footer>
+    </main>
+
+    <script type="module">
+      // This page runs the pedal. Not a model of it, not a preview of it: the
+      // firmware's own program, compiled for wasm.
+      //
+      // src/ui/*.tsx was lowered ahead of time by geatsc to C++ and linked with
+      // the same Gea layout and paint engine the board runs. src/native/ui/
+      // board_bridge.cpp, src/native/ui/controls.c and src/native/storage/
+      // {model_catalog,factory_presets,panel_presets} -- the board itself, the
+      // one that owns the amp values, the preset records, the revision hash and
+      // the dirty flag the save prompt reads -- are compiled unmodified.
+      // src/audio/{processor,effects,tuner}.cpp and the A2-Full engine run in the
+      // same module on an AudioWorklet thread. module.wasm IS that program.
+      // Nothing about the pedal ships to this page as JavaScript.
+      //
+      // The page contributes what only a browser can: a canvas, pointer events,
+      // an input device, a key-value store, and the bytes of the two factory
+      // images. web/board_platform.cpp is where those meet the firmware.
+      // Everything under dist/, by content. scripts/stamp-web-build.mjs rewrites
+      // this table after every build, so each file is asked for by a name that
+      // changes only when the file does -- which is what lets _headers cache
+      // dist/ for a year. This HTML, which names the versions, is the only thing
+      // that has to be fresh, and it is the one file no one caches.
+      //
+      // module.js and module.wasm share a version deliberately. They are one
+      // program in two files and are only ever correct together: the wasm
+      // imports every EM_JS function the glue defines, so a page that pairs a
+      // new .wasm with a cached .js does not degrade, it fails to instantiate --
+      // "Import #18 env pedal_sd_write: function import requires a callable", a
+      // blank panel, on the next deploy after anyone's first visit. Hashing them
+      // separately would let a browser hold a valid-looking version of each from
+      // different builds; hashing them together makes the pair the unit.
+      const ASSETS = {
+        'dist/factory/models.bin': '89fabce3af35',
+        'dist/factory/presets.json': '99fbc5b980b5',
+        'dist/module.js': 'deff086b4255',
+        'dist/module.wasm': 'deff086b4255',
+      }
+      // An unstamped path is asked for plainly rather than with an empty
+      // version: a file the build did not produce is a file this page should not
+      // pretend to know the content of.
+      const asset = (path) => (ASSETS[path] ? `${path}?v=${ASSETS[path]}` : path)
+
+      const { default: createModule } = await import(`./${asset('dist/module.js')}`)
+
+      // The board's panel is 502x410 physical pixels laid out at 251x205 points
+      // (gea.cssDevicePixelRatio 2, GEA_EMBEDDED_DISPLAY_WIDTH/HEIGHT). This page
+      // renders the SAME layout into twice as many pixels in each direction and
+      // displays it at the panel's own size, so text and curves are supersampled
+      // rather than blocky. Nothing about the layout changes: the ratio goes up
+      // with the framebuffer, so the UI still measures 251x205 points.
+      const PANEL_WIDTH = 502
+      const PANEL_HEIGHT = 410
+      const OVERSAMPLE = 2
+      const FRAMEBUFFER_WIDTH = PANEL_WIDTH * OVERSAMPLE
+      const FRAMEBUFFER_HEIGHT = PANEL_HEIGHT * OVERSAMPLE
+      // The divisor src/native/ui/board_bridge.cpp applies to a pointer, times
+      // the oversample: the UI hands the host a position in framebuffer pixels
+      // and reads back panel points.
+      const DEVICE_PIXEL_RATIO = 2 * OVERSAMPLE
+
+      const status = document.getElementById('status')
+      const canvas = document.getElementById('panel')
+      const context = canvas.getContext('2d', { alpha: false })
+      const startButton = document.getElementById('start')
+      const deviceSelect = document.getElementById('device')
+      const channelSelect = document.getElementById('channel')
+      const meters = {
+        in: {
+          fill: document.getElementById('in-fill'),
+          peak: document.getElementById('in-peak'),
+          value: document.getElementById('in-value'),
+        },
+        out: {
+          fill: document.getElementById('out-fill'),
+          peak: document.getElementById('out-peak'),
+          value: document.getElementById('out-value'),
+        },
+        load: {
+          fill: document.getElementById('load-fill'),
+          value: document.getElementById('load-value'),
+        },
+      }
+
+      function fail(message) {
+        status.textContent = message
+        throw new Error(message)
+      }
+
+      if (typeof SharedArrayBuffer === 'undefined') {
+        fail(
+          'This page is not cross-origin isolated, so the audio thread cannot start. ' +
+            'Serve it with npm run serve:web, which sends the two COOP/COEP headers.',
+        )
+      }
+
+      // The two factory files the board is flashed with: tools/models_to_bin.py
+      // packs assets/models/factory.json into the model library image, and the
+      // presets are assets/presets.json itself, checked and copied by
+      // tools/presets_to_json.py. scripts/pack-factory-assets.mjs runs both
+      // before this build. The same bytes, read by the same readers — the preset
+      // document goes through the firmware's own JSON parser here exactly as it
+      // does on the board, so you can open dist/factory/presets.json and read
+      // what the pedal comes up with.
+      const [models, presets] = await Promise.all(
+        ['dist/factory/models.bin', 'dist/factory/presets.json'].map((name) =>
+          fetch(asset(name))
+            .then((response) => response.arrayBuffer())
+            .then((buffer) => new Uint8Array(buffer)),
+        ),
+      )
+
+      const module = await createModule({
+        // emscripten asks for module.wasm by name, beside module.js; the version
+        // is this page's to add, and it is the one module.js was built with.
+        locateFile: (path, prefix) => prefix + asset(`dist/${path}`).slice('dist/'.length),
+      })
+
+      // The board's power-on, before the UI: mounting the tree reads the board
+      // on its first frame, so the board has to be up by then. What that means
+      // in order is web/board_platform.cpp's business, not this page's.
+      const install = (bytes) => {
+        const buffer = module._malloc(bytes.length)
+        module.HEAPU8.set(bytes, buffer)
+        return buffer
+      }
+      const modelsBuffer = install(models)
+      const presetsBuffer = install(presets)
+      const library = module.ccall(
+        'pedal_board_boot',
+        'number',
+        ['number', 'number', 'number', 'number'],
+        [modelsBuffer, models.length, presetsBuffer, presets.length],
+      )
+      module._free(modelsBuffer)
+      module._free(presetsBuffer)
+      if (library < 0) fail('the board did not come up')
+      const libraryText = `${Math.floor(library / 1000)} profiles · ${library % 1000} presets`
+
+      if (
+        module.ccall(
+          'app_init',
+          'number',
+          ['number', 'number', 'number'],
+          [FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, DEVICE_PIXEL_RATIO],
+        ) !== 0
+      ) {
+        fail('app_init failed')
+      }
+
+      const width = module.ccall('get_framebuffer_width', 'number', [], [])
+      const height = module.ccall('get_framebuffer_height', 'number', [], [])
+      const strideBytes = module.ccall('get_framebuffer_stride_bytes', 'number', [], [])
+      canvas.width = width
+      canvas.height = height
+      // Displayed at the panel's own size whatever the framebuffer is: the extra
+      // pixels are there to be downsampled by the browser, not to make the pedal
+      // bigger. The height is left to follow the width -- see #panel -- so a
+      // screen narrower than the panel scales it instead of distorting it.
+      canvas.style.width = `${PANEL_WIDTH}px`
+      canvas.style.height = 'auto'
+      canvas.style.aspectRatio = `${PANEL_WIDTH} / ${PANEL_HEIGHT}`
+      const image = context.createImageData(width, height)
+
+      // The framebuffer is RGB565 in native (little-endian) u16, exactly what the
+      // QSPI panel is fed. Expanding 5/6/5 back to 8 bits replicates the high bits
+      // into the low ones, so 0x1f maps to 0xff rather than 0xf8.
+      function blit() {
+        const base = module.ccall('get_framebuffer_ptr', 'number', [], [])
+        const pixels = module.HEAPU16.subarray(base >> 1, (base >> 1) + (strideBytes >> 1) * height)
+        const rgba = image.data
+        const rowWords = strideBytes >> 1
+        let out = 0
+        for (let y = 0; y < height; y++) {
+          let read = y * rowWords
+          for (let x = 0; x < width; x++) {
+            const value = pixels[read++]
+            const r = (value >> 11) & 0x1f
+            const g = (value >> 5) & 0x3f
+            const b = value & 0x1f
+            rgba[out++] = (r << 3) | (r >> 2)
+            rgba[out++] = (g << 2) | (g >> 4)
+            rgba[out++] = (b << 3) | (b >> 2)
+            rgba[out++] = 255
+          }
+        }
+        context.putImageData(image, 0, 0)
+      }
+
+      // The module is linked with ASYNCIFY, so a call can unwind and the next one
+      // must wait for it. A tap is also three calls, not one: app_touch_down only
+      // feeds the touchscreen, and what runs an onClick is a hit test for a press
+      // id followed by pointer events carrying it. Both are the simulator's own
+      // arrangement (simulator/src/{app-runtime,main}.ts).
+      const POINTER_DOWN = 1
+      const POINTER_MOVE = 2
+      const POINTER_UP = 3
+      const CLICK = 4
+
+      let queue = Promise.resolve()
+      function call(ident, returnType, argTypes, args) {
+        const next = queue.then(() =>
+          module.ccall(ident, returnType, argTypes, args, { async: true }),
+        )
+        queue = next.then(
+          () => undefined,
+          () => undefined,
+        )
+        return next
+      }
+      function callSync(ident, returnType, argTypes, args) {
+        return module.ccall(ident, returnType, argTypes, args)
+      }
+
+      // A handle on the running panel, for poking at it from the console.
+      globalThis.__panel = { module, call, callSync }
+
+      // --- the card ------------------------------------------------------------
+      //
+      // The board reads captures off an SD card: /nam on the card, walked six
+      // levels deep, .nam and .namb taken, everything else ignored. A page has no
+      // card — but it can be handed a folder, and a folder IS a card. This asks
+      // for one and hands its bytes to web/sd_models_web.cpp, which answers the
+      // firmware's two card questions out of them. Nothing downstream knows: the
+      // captures appear under "SD card" in the amp browser the panel already has,
+      // in the player's own subfolders, under the same ids a preset would name
+      // them by — so a folder filled here works in the slot of a real board, and
+      // a card pulled out of one works here.
+      //
+      // Two ways in, because the File System Access API is Chromium-only. A
+      // picked directory handle can be remembered and written back to; an
+      // <input webkitdirectory>, which Safari and Firefox do support, is
+      // read-only and cannot be remembered. So everything the pedal writes — a
+      // prepared capture, the presets — goes to IndexedDB in both cases, and to
+      // the folder as well when the browser allows it. The second visit is
+      // instant either way; Safari is not a lesser pedal, only a folder this page
+      // is not allowed to write to.
+
+      const folderInput = document.getElementById('folder-input')
+
+      // What the card has to say goes on the page's one status line, under the
+      // pedal. There is no card widget any more: the panel's own "SD card" row
+      // is the control, and this is the line that reports what came of a tap.
+      function cardStatus(text) {
+        status.textContent = text
+      }
+
+      // The name web/sd_models_web.cpp writes it under, and the one the board
+      // writes onto a card: one file, wherever the presets end up.
+      const PRESETS_FILE = 'coyopedal-presets.json'
+      const PRESETS_KEY = 'pedalboard/panel_presets/presets'
+      // What the board's own scan accepts, plus the prepared-capture cache it
+      // writes beside a .nam and the preset file this page adds.
+      const CARD_FILE = /\.(nam|namb|s3cache)$/i
+      const MAX_DEPTH = 6
+      const MAX_FILE_BYTES = 4 * 1024 * 1024
+      // The module is linked with a fixed 192 MB heap and the snapshot lives in
+      // it, beside the engine and its weights. A folder larger than this is read
+      // up to here and says so, which is better than an allocation failure that
+      // takes the running pedal down with it.
+      const MAX_CARD_BYTES = 32 * 1024 * 1024
+
+      // The page's copy of the card, so a capture prepared during this session is
+      // in the snapshot the next load reads even when nothing could be persisted.
+      let snapshot = new Map()
+      // The picked folder, when the browser gave us one we may write to.
+      let directory = null
+      // A folder remembered from a previous visit whose permission has lapsed.
+      // Chromium hands back the handle but not the right to read it, and
+      // requestPermission() only works inside a gesture — so it waits for a click.
+      let lapsed = null
+
+      // IndexedDB rather than localStorage: these are megabytes of binary, and it
+      // is the store every browser gives a page real room in. Every failure here
+      // resolves instead of rejecting — storage switched off should cost the
+      // player persistence, never the pedal.
+      let connection = null
+      function openDatabase() {
+        if (connection) return connection
+        connection = new Promise((resolve) => {
+          let request
+          try {
+            request = indexedDB.open('coyopedal', 1)
+          } catch (error) {
+            resolve(null)
+            return
+          }
+          request.onupgradeneeded = () => {
+            const database = request.result
+            if (!database.objectStoreNames.contains('files')) database.createObjectStore('files')
+            if (!database.objectStoreNames.contains('meta')) database.createObjectStore('meta')
+          }
+          request.onsuccess = () => resolve(request.result)
+          request.onerror = () => resolve(null)
+          request.onblocked = () => resolve(null)
+        })
+        return connection
+      }
+
+      function transact(name, mode, run) {
+        return openDatabase().then(
+          (database) =>
+            new Promise((resolve) => {
+              if (!database) {
+                resolve(null)
+                return
+              }
+              let answer = null
+              let transaction
+              try {
+                transaction = database.transaction(name, mode)
+              } catch (error) {
+                resolve(null)
+                return
+              }
+              transaction.oncomplete = () => resolve(answer)
+              transaction.onerror = () => resolve(null)
+              transaction.onabort = () => resolve(null)
+              let request = null
+              try {
+                request = run(transaction.objectStore(name))
+              } catch (error) {
+                // A value the browser will not clone, or a store that vanished
+                // under a version change. Storage is a convenience here; the
+                // pedal does not stop for it.
+                resolve(null)
+                return
+              }
+              if (request) {
+                request.onsuccess = () => {
+                  answer = request.result
+                }
+              }
+            }),
+        )
+      }
+      const dbGet = (name, key) => transact(name, 'readonly', (store) => store.get(key))
+      const dbPut = (name, key, value) =>
+        transact(name, 'readwrite', (store) => store.put(value, key))
+      const dbKeys = (name) => transact(name, 'readonly', (store) => store.getAllKeys())
+      const dbValues = (name) => transact(name, 'readonly', (store) => store.getAll())
+      const dbClear = (name) => transact(name, 'readwrite', (store) => store.clear())
+
+      // A write from the pedal: a capture the tuner has just spent a minute
+      // preparing, or the preset store after a save. Fire and forget by
+      // construction — the call arrives from inside pedalboard_sd_model_read(),
+      // on the panel's own stack, where nothing can wait for a disk.
+      globalThis.pedalSdWrite = (path, bytes) => {
+        snapshot.set(path, bytes)
+        void writeOut(path, bytes)
+      }
+
+      async function writeOut(path, bytes) {
+        await dbPut('files', path, bytes)
+        if (!directory) return
+        try {
+          const parts = path.split('/')
+          let folder = directory
+          for (const part of parts.slice(0, -1)) {
+            folder = await folder.getDirectoryHandle(part, { create: true })
+          }
+          const handle = await folder.getFileHandle(parts[parts.length - 1], { create: true })
+          const writable = await handle.createWritable()
+          await writable.write(bytes)
+          await writable.close()
+        } catch (error) {
+          // A folder the browser will only read, or one the player has moved
+          // since. The copy in IndexedDB is the one this page needs.
+        }
+      }
+
+      function bytesOf(value) {
+        if (value instanceof Uint8Array) return value
+        if (value instanceof ArrayBuffer) return new Uint8Array(value)
+        return new Uint8Array(0)
+      }
+
+      async function withBytes(name, returnType, bytes) {
+        const buffer = module._malloc(bytes.length || 1)
+        module.HEAPU8.set(bytes, buffer)
+        try {
+          return await call(name, returnType, ['number', 'number'], [buffer, bytes.length])
+        } finally {
+          module._free(buffer)
+        }
+      }
+
+      // Every one of these is a wasm export, so every one of them goes through
+      // the same queue the frame loop uses. The module is linked with ASYNCIFY:
+      // while app_frame is unwound mid-frame the stack belongs to it, and calling
+      // in from outside would corrupt it.
+      // `reveal` is the difference between a card being put in and a card that
+      // was already there. A folder the player just picked is news: the pedal
+      // opens its amp browser on it and this line says what came of it. The
+      // folder this page found in its own storage on the way up is not news --
+      // it comes back silently, on whatever screen the pedal was going to come
+      // up on, leaving the line underneath saying what it says to a new visitor.
+      async function mountCard(files, label, truncated, reveal) {
+        snapshot = new Map(files)
+        if (reveal) cardStatus(`reading ${label}…`)
+        await call('pedal_sd_reset', null, [], [])
+        for (const [path, bytes] of files) {
+          const buffer = module._malloc(bytes.length || 1)
+          module.HEAPU8.set(bytes, buffer)
+          await call(
+            'pedal_sd_add',
+            null,
+            ['string', 'number', 'number'],
+            [path, buffer, bytes.length],
+          )
+          module._free(buffer)
+        }
+        const found = await call('pedal_sd_mount', 'number', ['number'], [reveal ? 1 : 0])
+
+        // Presets on the card are taken only by a browser that has none of its
+        // own. A folder is a thing you carry between machines, so the first
+        // machine it reaches should end up with your presets — and a folder
+        // picked on the machine you have been playing on all week must not
+        // quietly replace the week. After that the mirror keeps the file current.
+        let existing = null
+        try {
+          existing = localStorage.getItem(PRESETS_KEY)
+        } catch (error) {
+          existing = null
+        }
+        const presets = snapshot.get(PRESETS_FILE)
+        const imported =
+          presets && !existing && (await withBytes('pedal_sd_presets_import', 'number', presets))
+
+        const limit = truncated ? ' · stopped at 32 MB' : ''
+        const carried = imported ? ' · presets restored from the folder' : ''
+        if (reveal)
+          cardStatus(
+            found
+              ? `${found} profile${found === 1 ? '' : 's'} from ${label}${limit}${carried} — they are under “SD card” in the amp browser`
+              : `no .nam or .namb files under ${label}${limit} — the pedal is still on its factory captures`,
+          )
+        return found
+      }
+
+      // Picking a folder replaces what was stored for the last one — except the
+      // preset mirror. On a browser that cannot write to a folder that mirror
+      // exists only here, so dropping it because the folder has no copy of it
+      // would throw the player's presets away on the way to reading their
+      // captures.
+      async function remember(files, label) {
+        const kept = files.some(([path]) => path === PRESETS_FILE)
+          ? null
+          : await dbGet('files', PRESETS_FILE)
+        if (kept) files.push([PRESETS_FILE, bytesOf(kept)])
+        await dbClear('files')
+        for (const [path, bytes] of files) await dbPut('files', path, bytes)
+        await dbPut('meta', 'label', label)
+      }
+
+      // The card's root. A player may hand over the folder their captures are in,
+      // or the parent that holds a "nam" folder the way a card does. Both are the
+      // card; taking the inner one keeps the paths — and so the capture ids —
+      // identical to what the board would compute for the same files.
+      async function cardRoot(handle) {
+        try {
+          return await handle.getDirectoryHandle('nam')
+        } catch (error) {
+          return handle
+        }
+      }
+
+      async function readHandle(handle) {
+        const files = []
+        let total = 0
+        let truncated = false
+        const visit = async (folder, prefix, depth) => {
+          for await (const [name, child] of folder.entries()) {
+            if (name.startsWith('.')) continue
+            const path = prefix ? `${prefix}/${name}` : name
+            if (child.kind === 'directory') {
+              if (depth < MAX_DEPTH) await visit(child, path, depth + 1)
+              continue
+            }
+            if (!CARD_FILE.test(name) && name !== PRESETS_FILE) continue
+            const file = await child.getFile()
+            if (file.size === 0 || file.size > MAX_FILE_BYTES) continue
+            if (total + file.size > MAX_CARD_BYTES) {
+              truncated = true
+              continue
+            }
+            total += file.size
+            files.push([path, new Uint8Array(await file.arrayBuffer())])
+          }
+        }
+        await visit(await cardRoot(handle), '', 0)
+        return { files, truncated }
+      }
+
+      // The read-only way in. A file input reports each file's path under the
+      // folder that was picked, so the first segment is dropped to get back to
+      // the card-relative path the board would have used — and a "nam" segment
+      // after it is dropped too, for the same reason cardRoot exists.
+      async function readInput(list) {
+        const files = []
+        let total = 0
+        let truncated = false
+        for (const file of list) {
+          // A directory input reports each file under the folder that was
+          // picked, so the first segment is that folder and goes. A browser that
+          // reports no path at all -- one file, dragged in -- has already given
+          // us the card-relative name.
+          const relative = file.webkitRelativePath || ''
+          const parts = relative ? relative.split('/') : [file.name]
+          if (relative) parts.shift()
+          if (parts[0] === 'nam') parts.shift()
+          const name = parts[parts.length - 1]
+          if (!parts.length || parts.length > MAX_DEPTH + 1 || name.startsWith('.')) continue
+          if (!CARD_FILE.test(name) && name !== PRESETS_FILE) continue
+          if (file.size === 0 || file.size > MAX_FILE_BYTES) continue
+          if (total + file.size > MAX_CARD_BYTES) {
+            truncated = true
+            continue
+          }
+          total += file.size
+          files.push([parts.join('/'), new Uint8Array(await file.arrayBuffer())])
+        }
+        return { files, truncated }
+      }
+
+      async function useFolder(handle, reveal) {
+        if (reveal) cardStatus(`reading ${handle.name}…`)
+        const { files, truncated } = await readHandle(handle)
+        await remember(files, handle.name)
+        await mountCard(files, handle.name, truncated, reveal)
+      }
+
+      // The pedal asking for a card. web/sd_models_web.cpp calls this when the
+      // "SD card" row is tapped, which is the only way in now: the pedal is the
+      // control, and the page is the folder it reads.
+      //
+      // The tap arrives here still inside the pointer event that produced it --
+      // the wasm call is awaited, not deferred -- so the picker still has the
+      // gesture it needs. Measured rather than assumed: at the moment
+      // showDirectoryPicker() is called, navigator.userActivation.isActive is
+      // true, which is the whole of what the API asks for.
+      //
+      // It can still refuse -- a site setting, an enterprise policy, an
+      // extension -- and a page is told nothing about why. What a refusal looks
+      // like from the player's chair is a row that does nothing, so the file
+      // input takes over the moment the picker declines and keeps it for the
+      // rest of the visit. The input reads a folder just as well; the one thing
+      // it cannot do is hand back a handle to write through, which costs the
+      // preset mirror and the folder being re-read on the next visit.
+      let picking = false
+      let pickerRefused = false
+      globalThis.pedalSdOpen = async () => {
+        if (picking) return
+        picking = true
+        try {
+          if (lapsed) {
+            const handle = lapsed
+            // One way or another this folder is answered for now: either the
+            // permission comes back and it is the card, or it is dropped and the
+            // next tap is a fresh pick. Chromium only prompts once, so keeping a
+            // refused handle around would make the row dead for the visit.
+            lapsed = null
+            if ((await handle.requestPermission({ mode: 'readwrite' })) === 'granted') {
+              directory = handle
+              await useFolder(handle, true)
+              return
+            }
+            cardStatus('the folder stayed locked — tap “SD card” to pick it again')
+            return
+          }
+          if (!pickerRefused && typeof globalThis.showDirectoryPicker === 'function') {
+            try {
+              const handle = await globalThis.showDirectoryPicker({
+                id: 'coyopedal-nam',
+                mode: 'readwrite',
+              })
+              directory = handle
+              await dbPut('meta', 'handle', handle)
+              await useFolder(handle, true)
+              return
+            } catch (error) {
+              // The player closed the picker. That is an answer, not a fault.
+              if (error && error.name === 'AbortError') return
+              pickerRefused = true
+              cardStatus(
+                `folder: ${(error && (error.message || error)) || 'the browser would not open its picker'} — asking the plain way instead`,
+              )
+            }
+          }
+          // Safari and Firefox, and Chromium once its own picker has refused.
+          // The picker is the input's own, so the click has to reach it from
+          // inside this gesture.
+          //
+          // Cleared first, because an input only reports a CHANGE: pick the same
+          // folder a second time and the selection is the one already in it, so
+          // no event arrives and "Pick another folder" looks broken -- which is
+          // exactly what it did in Safari, where this is the only way in. An
+          // empty input makes any pick a change, including the same folder
+          // again, which is a reasonable thing to ask for after editing it.
+          folderInput.value = ''
+          folderInput.click()
+        } catch (error) {
+          if (error && error.name === 'AbortError') return
+          cardStatus(`folder: ${(error && (error.message || error)) || 'could not be read'}`)
+        } finally {
+          picking = false
+        }
+      }
+
+      folderInput.addEventListener('change', async () => {
+        const list = Array.from(folderInput.files || [])
+        if (!list.length) return
+        const label = (list[0].webkitRelativePath || '').split('/')[0] || 'the folder'
+        cardStatus(`reading ${label}…`)
+        const { files, truncated } = await readInput(list)
+        await remember(files, label)
+        await mountCard(files, label, truncated, true)
+      })
+
+      // A previous visit's folder. What is in IndexedDB is mounted first and
+      // without asking — it is the player's own data, already on this machine,
+      // and the pedal should come up with their captures in it, on whatever
+      // screen it was going to come up on. Re-reading the folder itself needs a
+      // permission Chromium only keeps for the session; when it has lapsed the
+      // captures are still there from storage, and tapping "SD card" is the one
+      // gesture that gets the folder itself back.
+      async function restoreCard() {
+        if (typeof indexedDB === 'undefined') return
+        const [keys, values, label, handle] = await Promise.all([
+          dbKeys('files'),
+          dbValues('files'),
+          dbGet('meta', 'label'),
+          dbGet('meta', 'handle'),
+        ])
+        const name = label || 'a folder'
+        if (keys && keys.length && values && values.length === keys.length) {
+          await mountCard(
+            keys.map((key, index) => [String(key), bytesOf(values[index])]),
+            name,
+            false,
+            false,
+          )
+        }
+        if (!handle || typeof handle.queryPermission !== 'function') return
+        if ((await handle.queryPermission({ mode: 'readwrite' })) === 'granted') {
+          directory = handle
+          await useFolder(handle, false)
+          return
+        }
+        lapsed = handle
+      }
+
+      // --- audio ---------------------------------------------------------------
+
+      // The input is opened when the page loads, not when the pedal starts.
+      // Which device and which of its channels the guitar is in are things you
+      // settle before you make a sound, and neither list can exist until a
+      // device is open: enumerateDevices() withholds names, and nothing else
+      // says how many inputs a device has. So opening it is the page's own
+      // business, and Start is only the pedal.
+
+      // enumerateDevices() answers with real deviceIds and EMPTY labels until a
+      // page has been granted the microphone once -- a privacy rule, not a bug,
+      // and the same in every browser. So the list says so rather than inventing
+      // names: an unnamed device the page cannot tell you about is worse than a
+      // sentence explaining why.
+      async function listDevices() {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const inputs = devices.filter((device) => device.kind === 'audioinput')
+        const selected = deviceSelect.value
+        deviceSelect.innerHTML = ''
+        if (inputs.length === 0) {
+          deviceSelect.append(new Option('no audio inputs', ''))
+          deviceSelect.disabled = true
+          return
+        }
+        if (!inputs.some((input) => input.label !== '')) {
+          deviceSelect.append(new Option('allow the microphone to see your inputs', ''))
+          deviceSelect.disabled = true
+          return
+        }
+        for (const input of inputs) {
+          // Chrome lists the OS default twice: once as "Default - <name>" and
+          // once under its own name. Both rows are kept, because which one the
+          // browser follows when the default changes is the difference.
+          deviceSelect.append(new Option(input.label, input.deviceId))
+        }
+        deviceSelect.value = inputs.some((input) => input.deviceId === selected)
+          ? selected
+          : inputs[0].deviceId
+        deviceSelect.disabled = false
+      }
+
+      // Everything a browser puts between a guitar and the DSP, turned off. Echo
+      // cancellation, noise suppression and AGC are all written for speech and
+      // all of them rewrite a guitar signal; autoGainControl in particular would
+      // fight the amp's own gain structure, which is the part being demonstrated.
+      //
+      // channelCount is asked for as an ideal rather than pinned: an exact 2
+      // would make an eight-in interface hand over a downmix, and reaching input
+      // 5 of one is the whole point of the channel picker. A browser answers
+      // with what the device actually has; 32 is past anything it will offer.
+      function constraints(deviceId) {
+        return {
+          audio: {
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: { ideal: 32 },
+            sampleRate: 48000,
+          },
+          video: false,
+        }
+      }
+
+      // The channel list. Rebuilt only when the count changes, so the control
+      // does not flicker under a list that is the same list.
+      //
+      // The option text is fixed width by construction. Levels used to ride
+      // along in it -- "ch 1 · 30%" -- and every option changed width as the
+      // signal came and went, resizing the control several times a second. The
+      // level belongs in the meter, which is sized for it.
+      let channelCount = 0
+      function buildChannels(count) {
+        if (count === channelCount) return
+        channelCount = count
+        const selected = Math.min(Number(channelSelect.value) || 0, Math.max(count - 1, 0))
+        channelSelect.innerHTML = ''
+        for (let channel = 0; channel < Math.max(count, 1); channel++) {
+          channelSelect.append(new Option(`ch ${channel + 1}`, String(channel)))
+        }
+        channelSelect.value = String(selected)
+        channelSelect.disabled = count < 2
+        callSync('pedal_audio_set_input_channel', null, ['number'], [selected])
+      }
+
+      // The pedal takes the channel it is told to whether or not it is running:
+      // the setting is an atomic the audio thread reads, so choosing one before
+      // Start is choosing the channel the first block will be built from.
+      channelSelect.addEventListener('change', () => {
+        callSync('pedal_audio_set_input_channel', null, ['number'], [Number(channelSelect.value)])
+      })
+
+      // The source is the one part of the graph tied to a device, so a device
+      // change replaces it and nothing else. Before the pedal runs there is no
+      // graph to attach to, and the stream waits on globalThis for start.
+      function attachSource(stream) {
+        const context = globalThis.pedalAudioContext
+        if (!context) return
+        globalThis.pedalInputSource?.disconnect()
+        const source = context.createMediaStreamSource(stream)
+        source.connect(globalThis.pedalNode)
+        globalThis.pedalInputSource = source
+      }
+
+      async function openInput(deviceId) {
+        // The old device is released first: macOS will not hand the same
+        // interface to a second stream, so keeping it open makes switching back
+        // to it fail.
+        for (const track of globalThis.pedalInputStream?.getTracks() ?? []) track.stop()
+        const stream = await navigator.mediaDevices.getUserMedia(constraints(deviceId))
+        globalThis.pedalInputStream = stream
+        await listDevices()
+        // What the track says it opened. Once the pedal runs, the worklet's own
+        // count replaces this -- it is the number the audio thread was actually
+        // handed, and a browser that downmixed on the way in would otherwise
+        // leave the page offering channels that are not there.
+        buildChannels(stream.getAudioTracks()[0]?.getSettings().channelCount ?? 1)
+        attachSource(stream)
+        return stream
+      }
+
+      async function useInput(deviceId) {
+        try {
+          await openInput(deviceId)
+          status.textContent = inputSummary()
+        } catch (error) {
+          await listDevices()
+          status.textContent = `no input: ${error.message}`
+        }
+      }
+
+      function inputSummary() {
+        const track = globalThis.pedalInputStream?.getAudioTracks()[0]
+        if (!track) return 'no input'
+        const running = callSync('pedal_audio_running', 'number', [], [])
+        return running
+          ? `${globalThis.pedalAudioContext.sampleRate} Hz · ` +
+              `${callSync('pedal_audio_telemetry', 'number', ['number'], [7])}-frame blocks`
+          : `${track.label} · ${channelCount} channel${channelCount === 1 ? '' : 's'} · ` +
+              `pick an input channel, then press Start audio`
+      }
+
+      deviceSelect.addEventListener('change', () => void useInput(deviceSelect.value))
+
+      // An interface plugged in while the page is open is a device list that has
+      // changed, and the browser says so rather than making the page poll.
+      navigator.mediaDevices.addEventListener('devicechange', () => void listDevices())
+
+      startButton.addEventListener('click', async () => {
+        startButton.disabled = true
+        // A refused or absent input does not stop the pedal. The engine, the
+        // worklet thread and the panel are all worth having without one, and a
+        // source can be attached to a running graph afterwards.
+        if (!globalThis.pedalInputStream) {
+          await useInput(deviceSelect.value)
+        }
+        // The profile has to be resident before the first block runs, or the amp
+        // passes the signal through while the page looks like it is working.
+        const started = callSync('pedal_audio_start', 'number', [], [])
+        if (started === -1) {
+          status.textContent =
+            'The browser would not give a 48 kHz context, and every profile is captured at 48 kHz. ' +
+            'Set the interface to 48 kHz in the OS and reload.'
+          startButton.disabled = false
+          return
+        }
+        if (!started) {
+          status.textContent = 'the audio thread did not start'
+          startButton.disabled = false
+          return
+        }
+        startButton.textContent = 'Audio running'
+        // The graph exists now, so the stream opened before Start gets its
+        // source -- and the worklet takes over as the authority on the channel
+        // count from the next telemetry tick.
+        if (globalThis.pedalInputStream) attachSource(globalThis.pedalInputStream)
+        status.textContent = globalThis.pedalInputStream
+          ? inputSummary()
+          : 'The pedal is running with nothing plugged into it. Pick an input above.'
+      })
+
+      // The meters.
+      //
+      // A peak in permille is a LINEAR amplitude, and a linear bar is unreadable
+      // on an instrument: half of a guitar's useful range lives in the bottom
+      // eighth of it. So the bar is dBFS over a 60 dB window, which is what every
+      // meter a player has ever set a gain by shows, and the number beside it is
+      // the same figure in dB rather than a percentage of nothing in particular.
+      const METER_FLOOR_DB = -60
+      function decibels(permille) {
+        if (permille <= 0) return METER_FLOOR_DB
+        return Math.max(METER_FLOOR_DB, 20 * Math.log10(permille / 1000))
+      }
+      function position(db) {
+        return Math.min(1, Math.max(0, 1 - db / METER_FLOOR_DB))
+      }
+
+      // The bar and the number are two readouts, and they do NOT want the same
+      // speed.
+      //
+      // The bar is read with peripheral vision while you play, so it follows the
+      // signal: both rates are per second and applied against real elapsed time,
+      // so the movement looks the same whatever the tick rate turns out to be.
+      // 72 dB/s crosses the whole scale in five sixths of a second, 10.8 dB/s
+      // falls back over five and a half -- enough to see a note land and decay,
+      // far short of the per-block blur a sample-accurate peak meter would draw.
+      //
+      // The number is READ, one digit at a time, and a tenth of a dB relettering
+      // itself sixty times a second cannot be read at all. It samples the same
+      // needle a few times a second instead, which is as fast as anyone can take
+      // a figure off it.
+      const METER_ATTACK_DB_PER_SECOND = 72
+      const METER_RELEASE_DB_PER_SECOND = 10.8
+      const PEAK_HOLD_MS = 5000
+      const METER_READOUT_MS = 333
+      const meterState = {
+        in: { db: METER_FLOOR_DB, peak: METER_FLOOR_DB, peakAt: 0, readAt: 0 },
+        out: { db: METER_FLOOR_DB, peak: METER_FLOOR_DB, peakAt: 0, readAt: 0 },
+      }
+
+      function drawMeter(name, permille, now, elapsed) {
+        const state = meterState[name]
+        const target = decibels(permille)
+        state.db =
+          target >= state.db
+            ? Math.min(target, state.db + (METER_ATTACK_DB_PER_SECOND * elapsed) / 1000)
+            : Math.max(target, state.db - (METER_RELEASE_DB_PER_SECOND * elapsed) / 1000)
+        if (target >= state.peak || now - state.peakAt > PEAK_HOLD_MS) {
+          state.peak = target
+          state.peakAt = now
+        }
+        const meter = meters[name]
+        const level = position(state.db)
+        meter.fill.style.width = `${level * 100}%`
+        // -12 dBFS and 0 dBFS, the two lines that matter: the first is where a
+        // guitar should be sitting, the second is where the converter runs out.
+        meter.fill.className = `fill${state.db >= -0.1 ? ' clip' : state.db >= -12 ? ' hot' : ''}`
+        meter.peak.style.left = `calc(${position(state.peak) * 100}% - 2px)`
+        meter.peak.classList.toggle('lit', state.peak > METER_FLOOR_DB)
+        if (now - state.readAt >= METER_READOUT_MS) {
+          state.readAt = now
+          meter.value.textContent = state.db <= METER_FLOOR_DB ? '—' : `${state.db.toFixed(1)} dB`
+        }
+      }
+
+      let meteredAt = 0
+      let loadShown = 0
+      let loadReadAt = 0
+      function telemetry(now) {
+        if (!callSync('pedal_audio_running', 'number', [], [])) return
+        const field = (index) => callSync('pedal_audio_telemetry', 'number', ['number'], [index])
+        const elapsed = meteredAt === 0 ? 0 : now - meteredAt
+        meteredAt = now
+        // Once the worklet is running IT is the authority on how many channels
+        // the device actually delivers -- getSettings().channelCount is what the
+        // browser promised, and the two disagree often enough to matter.
+        buildChannels(field(5))
+        drawMeter('in', field(1), now, elapsed)
+        drawMeter('out', field(2), now, elapsed)
+        // Not a level, so not a dB scale: this is the fraction of each audio
+        // deadline the DSP spends, measured in the worklet itself.
+        const load = field(0) / 10
+        loadShown += (load - loadShown) * Math.min(1, elapsed / 830)
+        meters.load.fill.style.width = `${Math.min(100, loadShown)}%`
+        meters.load.fill.className = `fill${loadShown >= 90 ? ' clip' : loadShown >= 70 ? ' hot' : ''}`
+        if (now - loadReadAt >= METER_READOUT_MS) {
+          loadReadAt = now
+          meters.load.value.textContent = `${loadShown.toFixed(0)}%`
+        }
+      }
+
+      // --- the frame -----------------------------------------------------------
+
+      // The meters run at frame rate rather than on a slower timer of their own:
+      // a peak meter sampled at 10 Hz misses the transient that is the whole
+      // reason to look at one.
+      async function frame(now) {
+        try {
+          await call('app_frame', null, ['number'], [now])
+          blit()
+          telemetry(now)
+        } catch (error) {
+          // The panel is the pedal; the meters are a readout beside it. A throw
+          // anywhere in this callback used to break the requestAnimationFrame
+          // chain and freeze the screen for good -- taps still reached the DSP,
+          // so the pedal went on working with a dead display. Report it once and
+          // keep asking for frames.
+          if (!frame.reported) {
+            frame.reported = true
+            status.textContent = `frame: ${error && (error.message || error)}`
+            console.error(error)
+          }
+        }
+        requestAnimationFrame(frame)
+      }
+      requestAnimationFrame(frame)
+
+      // --- input ---------------------------------------------------------------
+
+      // Pointer position in framebuffer pixels: the canvas is displayed at its own
+      // pixel size, but a zoomed page or a narrow viewport can scale it.
+      function panelPoint(event) {
+        const bounds = canvas.getBoundingClientRect()
+        return [
+          Math.floor(((event.clientX - bounds.left) * width) / bounds.width),
+          Math.floor(((event.clientY - bounds.top) * height) / bounds.height),
+        ]
+      }
+
+      let down = false
+      let dragged = false
+      let pressId = -1
+      let startX = 0
+      let startY = 0
+      let lastX = 0
+      let lastY = 0
+
+      canvas.addEventListener('pointerdown', async (event) => {
+        if (!event.isPrimary) return
+        canvas.setPointerCapture(event.pointerId)
+        ;[lastX, lastY] = panelPoint(event)
+        startX = lastX
+        startY = lastY
+        down = true
+        dragged = false
+        await call('app_touch_down', null, ['number', 'number'], [lastX, lastY])
+        pressId = callSync('app_hit_test', 'number', ['number', 'number'], [lastX, lastY])
+        if (pressId >= 0) {
+          await call(
+            'app_dispatch_pointer_event',
+            null,
+            ['number', 'number', 'number', 'number'],
+            [POINTER_DOWN, pressId, lastX, lastY],
+          )
+        }
+      })
+
+      canvas.addEventListener('pointermove', async (event) => {
+        if (!down || !event.isPrimary) return
+        const [x, y] = panelPoint(event)
+        if (x === lastX && y === lastY) return
+        // The same 10 px slop the simulator uses to tell a drag from a tap: a
+        // slider wants the moves, a pedal must not get a click after one.
+        if (!dragged && (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10)) dragged = true
+        lastX = x
+        lastY = y
+        await call('app_touch_move', null, ['number', 'number'], [x, y])
+        if (pressId >= 0) {
+          await call(
+            'app_dispatch_pointer_event',
+            null,
+            ['number', 'number', 'number', 'number'],
+            [POINTER_MOVE, pressId, x, y],
+          )
+        }
+      })
+
+      async function release() {
+        if (!down) return
+        down = false
+        await call('app_touch_up', 'number', [], [])
+        await call('app_frame', null, ['number'], [performance.now()])
+        if (pressId >= 0) {
+          await call(
+            'app_dispatch_pointer_event',
+            null,
+            ['number', 'number', 'number', 'number'],
+            [POINTER_UP, pressId, lastX, lastY],
+          )
+        }
+        // A click belongs to the thing you pressed, so the release has to land
+        // back on it. That is the rule the board's own input pump follows --
+        // core/packages/engine/touch_runtime.cpp captures the node at touch-down
+        // and clicks THAT one -- and this used to hit-test again at the release
+        // point and click whatever was there instead.
+        //
+        // Which is wrong twice. Slide off a button and it still fired. And
+        // holding the Amp block, which opens the amp browser at the moment the
+        // hold registers, put a row of the new screen under a finger that was
+        // still down: lifting it loaded whichever capture had appeared there.
+        // Holding an effect block did the same into the editor. The press was
+        // already spent on the hold; there is no second thing to click.
+        if (!dragged && pressId >= 0) {
+          const clicked = callSync('app_hit_test', 'number', ['number', 'number'], [lastX, lastY])
+          if (clicked === pressId) {
+            await call(
+              'app_dispatch_pointer_event',
+              null,
+              ['number', 'number', 'number', 'number'],
+              [CLICK, clicked, lastX, lastY],
+            )
+          }
+        }
+        pressId = -1
+        dragged = false
+      }
+      canvas.addEventListener('pointerup', release)
+      canvas.addEventListener('pointercancel', release)
+
+      // Keys go to the panel, which is what reads them: the preset-name screen
+      // has its own on-screen keyboard and the board's own name editor behind
+      // it, the same on this page as on the hardware.
+      window.addEventListener('keydown', (event) => {
+        if (event.keyCode) void call('app_dispatch_key_down', null, ['number'], [event.keyCode])
+      })
+
+      await listDevices()
+      startButton.disabled = false
+      status.innerHTML =
+        `native panel · ${width}×${height} · ${libraryText} · ` +
+        `plug in an interface and press <b>Start audio</b>`
+
+      // A folder from a previous visit, if there is one. Not awaited either: it
+      // is storage, the panel is already playing, and captures appearing in the
+      // browser a moment later is exactly what inserting a card looks like.
+      void restoreCard()
+
+      // Deliberately not awaited: on a first visit this is a permission prompt,
+      // and the panel is already running behind it. Whatever it settles to --
+      // a device and its channels, or a sentence saying why not -- replaces the
+      // line above when it arrives.
+      void useInput()
+    </script>
+  </body>
+</html>

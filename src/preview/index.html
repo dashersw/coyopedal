@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pedalboard · Gea preview</title>
+  </head>
+  <body>
+    <main>
+      <h1>A signal chain you can touch.</h1>
+      <p>
+        Your whole chain, at a glance. Tap a block to shape its sound.<br />Tap the preset name to
+        switch, save, or manage your sounds.
+      </p>
+      <div class="device"><div id="app"></div></div>
+      <footer>
+        <span>502 × 410 AMOLED · 130 px corner radius</span
+        ><button id="reset">Reset preview</button>
+      </footer>
+      <div class="pitch-control">
+        <label for="pitch">Simulated pitch </label
+        ><select id="pitch">
+          <option value="0">Auto demo</option>
+          <option value="1">Flat</option>
+          <option value="2">In tune</option>
+          <option value="3">Sharp</option>
+          <option value="4">No signal</option>
+        </select>
+      </div>
+      <small class="preview-note"
+        >Preset changes are saved in this browser. This preview does not process audio or change the
+        device.</small
+      >
+    </main>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

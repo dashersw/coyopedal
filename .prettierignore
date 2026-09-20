@@ -1,0 +1,15 @@
+node_modules/
+**/build*/
+**/managed_components/
+.gea/
+.git/
+.env*
+.npmrc*
+src/native/services/remote_config.h
+src/native/boards*.json
+package-lock.json
+
+third_party/
+
+# Written by the CLA bot on every signature, in its own format.
+signatures/

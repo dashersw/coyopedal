@@ -1,0 +1,31 @@
+.page-arrows {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+}
+
+.pedalboard .page-arrow {
+  width: 38px;
+  height: 26px;
+  border-radius: 9px;
+  background: #252e36;
+  active-background-color: #252e36;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-chevron {
+  font-size: 18px;
+  color: #f0f2ed;
+}
+
+.pedalboard .page-arrow[aria-disabled='true'] .page-chevron {
+  color: #4a555e;
+}
+
+.page-count {
+  font-size: 11px;
+  color: #93a0aa;
+}

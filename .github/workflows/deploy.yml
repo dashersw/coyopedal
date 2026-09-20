@@ -1,0 +1,47 @@
+name: Deploy
+
+# Publishes the panel to the R2 bucket behind coyopedal.playtaurus.com.
+#
+# The site is built here rather than uploaded from a working tree. That is the
+# point: web/index.html names module.js and module.wasm with a content hash on
+# each URL, and the hash is stamped in by the build. Stamping on a runner means
+# the page that goes live always names the module that went live with it -- a
+# pairing the browser cannot survive getting wrong, because the wasm imports
+# the EM_JS functions the glue defines, so a stale half does not degrade, it
+# fails to start.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, and never cancelled: a half-uploaded site is worse than
+# a late one.
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: false
+
+jobs:
+  pages:
+    name: Publish to R2
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.13.0'
+          cache: npm
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '4.0.18'
+          actions-cache-folder: emsdk-4.0.18
+      - run: npm ci
+      - run: GEA_WEB_JOBS=$(nproc) npm run build:web-wasm
+      # The same script a developer runs by hand, so there is one description of
+      # what the site is made of and CI cannot drift from it.
+      - name: Deploy
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bash scripts/deploy-web.sh

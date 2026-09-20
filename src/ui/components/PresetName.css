@@ -1,0 +1,73 @@
+.name-field {
+  position: absolute;
+  left: 26px;
+  top: 49px;
+  width: 198px;
+  height: 25px;
+  border-radius: 5px;
+  background: #343d45;
+  padding: 3px 7px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.keyboard {
+  position: absolute;
+  left: 27px;
+  top: 80px;
+  width: 197px;
+}
+
+.key-row {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  height: 25px;
+}
+
+.pedalboard .key-row button {
+  width: 18px;
+  height: 22px;
+  background: #343d45;
+  active-background-color: #343d45;
+  border-radius: 4px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.key-row.last-keys {
+  justify-content: flex-start;
+}
+
+.pedalboard .key-row .numbers {
+  width: 42px;
+  margin-left: auto;
+}
+
+.keyboard-footer {
+  display: flex;
+  gap: 7px;
+}
+
+.pedalboard .keyboard-footer button {
+  width: 40px;
+  height: 25px;
+  border-radius: 6px;
+  background: #343d45;
+  active-background-color: #343d45;
+  font-size: 11px;
+}
+
+.pedalboard .keyboard-footer .space {
+  width: 95px;
+}
+
+.pedalboard .keyboard-footer button:last-child {
+  width: 45px;
+}
+
+.pedalboard .keyboard button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

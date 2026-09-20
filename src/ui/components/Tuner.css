@@ -1,0 +1,100 @@
+.tuner-reference,
+.tuner-frequency {
+  position: absolute;
+  width: 251px;
+  text-align: center;
+  font-size: 11px;
+  color: #93a0aa;
+}
+
+.tuner-reference {
+  top: 45px;
+}
+
+.tuner-frequency {
+  top: 109px;
+}
+
+.tuner-note {
+  position: absolute;
+  top: 53px;
+  width: 251px;
+  height: 56px;
+  text-align: center;
+  font-size: 52px;
+  line-height: 56px;
+  /* The only strings this ever holds are a note name and its octave, or an em
+     dash while nothing is voiced. At 52px an atlas of the full character set
+     costs half a megabyte of flash -- and, because flash rodata and PSRAM share
+     one address window on the ESP32-S3, half a megabyte of PSRAM with it. */
+  --gea-font-charset: 'ABCDEFG#0123456789-\2014';
+}
+
+.tuner-meter {
+  position: absolute;
+  left: 35.5px;
+  top: 129px;
+  width: 180px;
+  height: 25px;
+}
+
+.tuner-center {
+  position: absolute;
+  top: 0;
+  left: 84px;
+  width: 12px;
+  height: 25px;
+  border-radius: 4px;
+  background: #343d45;
+}
+
+.tuner-center.in-tune {
+  background: #29473b;
+}
+
+.ticks {
+  position: absolute;
+  width: 180px;
+  height: 25px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ticks span {
+  display: block;
+  width: 1px;
+  height: 7px;
+  background: #93a0aa;
+}
+
+.ticks .major {
+  height: 14px;
+}
+
+.tuner-needle {
+  position: absolute;
+  width: 3px;
+  height: 25px;
+  border-radius: 1.5px;
+  margin-left: -1.5px;
+}
+
+.tuner-scale {
+  position: absolute;
+  top: 154px;
+  left: 26px;
+  width: 198px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #93a0aa;
+}
+
+.tuner-status {
+  position: absolute;
+  top: 174px;
+  width: 251px;
+  text-align: center;
+  font-size: 15px;
+}

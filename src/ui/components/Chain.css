@@ -1,0 +1,244 @@
+.preset-count {
+  width: 159px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 1.2px;
+  color: #5c6870;
+  margin-bottom: 2px;
+}
+
+.preset-step {
+  position: absolute;
+  top: 36px;
+  width: 40px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.previous {
+  left: 6px;
+}
+
+.next {
+  left: 205px;
+}
+
+.step-chevron {
+  font-size: 22px;
+  color: #5c6870;
+}
+
+.preset-hero {
+  position: absolute;
+  left: 46px;
+  top: 22px;
+  width: 159px;
+  height: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.preset-hero-name {
+  width: 159px;
+  font-size: 22px;
+  line-height: 26px;
+  text-align: center;
+  /* Up to two lines; a name is at most 23 characters, which two lines hold. */
+  max-height: 52px;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.preset-hero-amp {
+  width: 159px;
+  font-size: 15px;
+  line-height: 18px;
+  color: #93a0aa;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.signal-line {
+  position: absolute;
+  left: 28px;
+  top: 121px;
+  width: 195px;
+  height: 1px;
+  background: #2a3339;
+}
+
+.dots {
+  position: absolute;
+  left: 12px;
+  top: 108px;
+  width: 227px;
+  height: 46px;
+  display: flex;
+}
+
+.block-dot {
+  flex: 1;
+  height: 46px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding-top: 5px;
+}
+
+.dot-halo {
+  width: 17px;
+  height: 17px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 6px;
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--ring);
+}
+
+.block-label {
+  font-size: 11px;
+  color: #5c6870;
+}
+
+/* The lit state is one class, so toggling it is a paint-only style diff the
+   engine can answer with this dot's own box instead of a full-viewport repaint.
+   A compound selector outranks the base rule on specificity, which is why the
+   two can set the same property where two bare classes could not: the native
+   build applies equally specific classes in no defined order. */
+.dot-halo.lit {
+  background: var(--halo);
+}
+
+.dot.lit {
+  background: var(--lit);
+  border-color: var(--lit);
+}
+
+.block-label.lit {
+  color: #e3e7e2;
+}
+
+/* Slot colours: the lit dot, the halo around it (the colour mixed 22% onto the
+   ground) and the dark dot's ring (45%). Precomputed, because the panel has no
+   colour mixing. Slots 0-5 are the effects, 6 the amp. They are custom
+   properties on the block so the rules above never name a slot. */
+.slot-0 {
+  --lit: #e5c875;
+  --halo: #3f3c2c;
+  --ring: #706542;
+}
+.slot-1 {
+  --lit: #91bdd0;
+  --halo: #2c3941;
+  --ring: #4a606b;
+}
+.slot-2 {
+  --lit: #82bca9;
+  --halo: #293938;
+  --ring: #436059;
+}
+.slot-3 {
+  --lit: #d39aad;
+  --halo: #3b3139;
+  --ring: #68505b;
+}
+.slot-4 {
+  --lit: #b9a6d8;
+  --halo: #353442;
+  --ring: #5c566e;
+}
+.slot-5 {
+  --lit: #da8864;
+  --halo: #3c2e29;
+  --ring: #6b483a;
+}
+.slot-6 {
+  --lit: #d3d1c4;
+  --halo: #3b3e3e;
+  --ring: #686965;
+}
+
+.pedalboard .home-pill {
+  position: absolute;
+  top: 164px;
+  width: 52px;
+  height: 26px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 13px;
+  background: #252e36;
+  active-background-color: #252e36;
+  color: #c9d0d5;
+}
+
+/* Slot colours for the selected-block dot on the editor screen
+   (Editor.tsx). The chain's own dots colour themselves through reactive style
+   members instead; see BlockDot. */
+.lit-0 {
+  background: #e5c875;
+  border-color: #e5c875;
+}
+.lit-1 {
+  background: #91bdd0;
+  border-color: #91bdd0;
+}
+.lit-2 {
+  background: #82bca9;
+  border-color: #82bca9;
+}
+.lit-3 {
+  background: #d39aad;
+  border-color: #d39aad;
+}
+.lit-4 {
+  background: #b9a6d8;
+  border-color: #b9a6d8;
+}
+.lit-5 {
+  background: #da8864;
+  border-color: #da8864;
+}
+.lit-6 {
+  background: #d3d1c4;
+  border-color: #d3d1c4;
+}
+
+.tune {
+  left: 70px;
+}
+
+/* The master pill's dot is the same one-class toggle as the chain dots, with
+   its two colours as custom properties on the pill. */
+.master {
+  left: 129px;
+  --lit: #82bca9;
+  --ring: #5c6870;
+}
+
+.master .status-dot {
+  border-color: var(--ring);
+}
+
+.master .status-dot.lit {
+  background: var(--lit);
+  border-color: var(--lit);
+}

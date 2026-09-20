@@ -1,0 +1,39 @@
+# Gea's own zero-initialized state and caches go to PSRAM through the
+# framework's shipped fragment (GEA_EMBEDDED_UI_STATE_EXTERNAL in gea.defines),
+# so the NAM engine can reserve its aligned internal SRAM coefficient banks.
+# This file holds what is specific to this board.
+#
+# Declared by gea.targets.esp32.ldFragments in package.json.
+
+# ESP-IDF maps every libphy object with noflash_data, which parks the PHY's
+# rodata in internal DRAM. That is for the objects with IRAM code (phy_reg,
+# phy_i2c, phy_init), which run while the cache is off. phy_track has no IRAM
+# code: it is temperature and power tracking called from a Wi-Fi timer, and its
+# 2,013 bytes of rodata are format strings. An object-level entry outranks the
+# archive-level one, so this sends just that object back to the default
+# placement and returns the 2 KB to the heap the audio graph draws from.
+#
+# phy_debug is the same case and the larger one: version strings for
+# phy_version_print, whose two functions are flash code anyway. An object that
+# only runs from flash can never read its strings with the cache off.
+[mapping:pedalboard_phy_track]
+archive: libphy.a
+entries:
+    phy_track (default)
+    phy_debug (default)
+
+# RTC fast memory is internal SRAM on the peripheral bus: slower than DRAM,
+# still valid for a static TCB (xPortCheckValidTCBMem accepts it) and still
+# readable with the cache off. The frame scheduler engine is 2,224 bytes of
+# UI-task state -- the frame task's TCB and its event queue bookkeeping -- read
+# fifteen times a second. Here they cost the UI nothing it can see and leave
+# DRAM for the audio graph.
+[scheme:pedalboard_rtc_fast]
+entries:
+    bss -> rtc_force_fast
+    common -> rtc_force_fast
+
+[mapping:pedalboard_gea_frame_rtc]
+archive: libmain.a
+entries:
+    frame_scheduler (pedalboard_rtc_fast)

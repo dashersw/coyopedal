@@ -1,0 +1,25 @@
+.parameter-list {
+  position: absolute;
+  top: 50px;
+  left: 24px;
+  width: 203px;
+  height: 114px;
+}
+
+.parameter {
+  height: 38px;
+}
+
+.parameter-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  height: 18px;
+}
+
+.editor-pager {
+  position: absolute;
+  left: 56px;
+  top: 166px;
+  width: 139px;
+}

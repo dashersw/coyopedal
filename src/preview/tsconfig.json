@@ -1,0 +1,9 @@
+{
+  "extends": "../ui/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "allowJs": true
+  },
+  "include": ["*.ts", "../../node_modules/@geajs/vite-plugin/gea-env.d.ts"],
+  "exclude": []
+}

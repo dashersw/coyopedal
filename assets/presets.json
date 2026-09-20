@@ -1,0 +1,47 @@
+{
+  "version": 3,
+  "presets": [
+    {
+      "name": "Silver Lining",
+      "profile": "volum-herbert-1-v30",
+      "amp": [20, 40, -30, 10, -10, 20],
+      "ampOn": true,
+      "blocks": [
+        { "block": "gate", "enabled": true, "params": [-640, 150, 0, 0, 0] },
+        { "block": "compressor", "enabled": true, "params": [-180, 30, 15, 200, 30] },
+        { "block": "overdrive", "enabled": false, "params": [200, 4000, 0, 0, 0] },
+        { "block": "reverb", "enabled": true, "params": [0, 22, 1800, 40, 15] },
+        { "block": "modulation", "enabled": false, "params": [8, 40, 16, 45, 0] },
+        { "block": "delay", "enabled": false, "params": [400, 25, 10, 0, 0] }
+      ]
+    },
+    {
+      "name": "Velvet Crunch",
+      "profile": "volum-herbert-1-v30",
+      "amp": [20, 85, -30, 0, 20, 0],
+      "ampOn": true,
+      "blocks": [
+        { "block": "gate", "enabled": true, "params": [-600, 120, 0, 0, 0] },
+        { "block": "compressor", "enabled": false, "params": [-180, 40, 10, 150, 0] },
+        { "block": "overdrive", "enabled": true, "params": [260, 4200, -20, 0, 0] },
+        { "block": "reverb", "enabled": true, "params": [0, 15, 1500, 50, 10] },
+        { "block": "modulation", "enabled": false, "params": [8, 40, 16, 45, 0] },
+        { "block": "delay", "enabled": true, "params": [380, 28, 10, 0, 0] }
+      ]
+    },
+    {
+      "name": "Ampete Heavy",
+      "profile": "volum-ampete-4-v30",
+      "amp": [20, 85, -30, -10, 0, 10],
+      "ampOn": true,
+      "blocks": [
+        { "block": "gate", "enabled": true, "params": [-560, 80, 0, 0, 0] },
+        { "block": "compressor", "enabled": false, "params": [-180, 40, 10, 150, 0] },
+        { "block": "overdrive", "enabled": false, "params": [200, 4000, 0, 0, 0] },
+        { "block": "reverb", "enabled": true, "params": [0, 7, 1000, 55, 10] },
+        { "block": "modulation", "enabled": false, "params": [8, 40, 16, 45, 0] },
+        { "block": "delay", "enabled": true, "params": [300, 18, 10, 0, 0] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+node_modules/
+build/
+build-*/
+**/build/
+**/build-*/
+.gea/
+.env*
+.npmrc*
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+src/native/services/remote_config.h
+
+# Playwright MCP page snapshots, written by the browser tooling.
+.playwright-mcp/
+
+# The WASM panel build output; rebuild with npm run build:web-wasm.
+web/dist/
+
+# setup-emsdk caches the SDK inside the workspace. Left untracked it makes the
+# tree look dirty, and the web build then refuses to stamp the commit into the
+# page's source link, because a dirty tree is not a commit anyone can be
+# pointed at.
+emsdk-*/

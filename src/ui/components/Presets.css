@@ -1,0 +1,72 @@
+.preset-list {
+  position: absolute;
+  left: 22px;
+  top: 50px;
+  width: 207px;
+  height: 99px;
+}
+
+.pedalboard .preset-row {
+  display: flex;
+  align-items: center;
+  width: 207px;
+  height: 30px;
+  margin-bottom: 3px;
+  padding: 0 9px;
+  gap: 7px;
+  border-radius: 6px;
+  background: #252e36;
+  active-background-color: #252e36;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preset-row-name {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.preset-pager {
+  position: absolute;
+  left: 94px;
+  top: 156px;
+  width: 82px;
+}
+
+.preset-pager .page-arrow {
+  width: 28px;
+}
+
+.pedalboard .new-preset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  left: 28px;
+  top: 155px;
+  width: 60px;
+  height: 28px;
+  border-radius: 9px;
+  background: #343d45;
+  active-background-color: #343d45;
+  font-size: 15px;
+}
+
+.pedalboard .setup-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  left: 181px;
+  top: 155px;
+  width: 42px;
+  height: 28px;
+  background: #343d45;
+  active-background-color: #343d45;
+  border-radius: 9px;
+  font-size: 13px;
+}

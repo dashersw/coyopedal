@@ -1,0 +1,300 @@
+{
+  "name": "esp32-s3-nam-pedalboard",
+  "license": "GPL-3.0-only",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check:frontend": "tsc -p src/ui/tsconfig.json --noEmit && tsc -p src/preview/tsconfig.json --noEmit",
+    "test": "bash scripts/test.sh",
+    "preview:panel": "node scripts/preview-panel.mjs",
+    "build:web": "vite build --config src/ui/vite.config.ts",
+    "dev": "vite --config src/ui/vite.config.ts --host 127.0.0.1",
+    "format": "node scripts/format.mjs",
+    "format:check": "node scripts/format.mjs --check",
+    "format:setup": "python3 -m venv build/format-tools && build/format-tools/bin/pip install -r requirements-format.txt",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "check": "npm run lint && npm run check:frontend && npm run format:check",
+    "build": "npm run build:web",
+    "build:firmware": "gea build --board amoled",
+    "flash:firmware": "gea flash --board amoled",
+    "build:web-wasm": "bash scripts/build-web-wasm.sh",
+    "serve:web": "node scripts/serve-web.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@geajs/vite-plugin": "latest",
+    "@geastack/cli": "latest",
+    "@geastack/compiler": "latest",
+    "@geastack/simulator": "latest",
+    "@geastack/targets": "latest",
+    "@types/node": "latest",
+    "eslint": "latest",
+    "eslint-config-prettier": "latest",
+    "globals": "latest",
+    "prettier": "latest",
+    "prettier-plugin-sh": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vite": "latest"
+  },
+  "dependencies": {
+    "@geajs/core": "latest",
+    "@geastack/chips": "latest",
+    "@geastack/core": "latest",
+    "@geastack/elements": "latest",
+    "@geastack/engine": "latest",
+    "@geastack/geaos": "latest",
+    "@geastack/host": "latest"
+  },
+  "gea": {
+    "id": "nam-pedalboard",
+    "name": "NAM Pedalboard",
+    "entry": "src/ui/index.tsx",
+    "runtime": "gea",
+    "targets": {
+      "web": true,
+      "geaos": false,
+      "esp32": {
+        "componentDirs": [
+          "src/audio",
+          "src/audio/nam",
+          "src/native/nam_banks",
+          "third_party/usb",
+          "third_party/cjson"
+        ],
+        "componentRequires": [
+          "audio",
+          "nam",
+          "nam_banks",
+          "usb",
+          "cjson",
+          "bt",
+          "esp_wifi",
+          "esp_netif",
+          "esp_event",
+          "lwip",
+          "esp_http_server",
+          "mbedtls",
+          "app_update",
+          "esp_app_format",
+          "esp_partition",
+          "fatfs",
+          "sdmmc",
+          "esp_driver_sdmmc",
+          "esp_driver_gpio",
+          "esp_driver_i2c"
+        ],
+        "linkOptions": [
+          "-Wl,--wrap=tlsf_memalign_offs",
+          "-Wl,--wrap=sys_thread_new",
+          "-Wl,--wrap=esp_panic_handler",
+          "-Wl,-u,__wrap_esp_panic_handler",
+          "-Wl,-u,__wrap_sys_thread_new",
+          "-Wl,-u,__wrap_tlsf_memalign_offs",
+          "-Wl,-u,coyopedal_nam_internal_batch"
+        ],
+        "embedFiles": {
+          "fallback-model.namb": "assets/models/volum-ampete-4-v30.namb",
+          "pedalboard_factory_models": "build/factory/models.bin",
+          "v1_presets_fallback": "build/factory/presets.json"
+        },
+        "partitions": {
+          "nvs": {
+            "type": "data",
+            "subtype": "nvs",
+            "offset": "0x9000",
+            "size": "0x6000"
+          },
+          "otadata": {
+            "type": "data",
+            "subtype": "ota",
+            "offset": "0xf000",
+            "size": "0x2000"
+          },
+          "phy_init": {
+            "type": "data",
+            "subtype": "phy",
+            "offset": "0x11000",
+            "size": "0x1000"
+          },
+          "ota_0": {
+            "type": "app",
+            "subtype": "ota_0",
+            "offset": "0x20000",
+            "size": "0x800000"
+          },
+          "ota_1": {
+            "type": "app",
+            "subtype": "ota_1",
+            "offset": "0x820000",
+            "size": "0x800000"
+          },
+          "models": {
+            "type": "data",
+            "subtype": "0x40",
+            "offset": "0x1020000",
+            "size": "0x40000",
+            "data": "build/factory/models.bin"
+          },
+          "presets": {
+            "type": "data",
+            "subtype": "0x41",
+            "offset": "0x1060000",
+            "size": "0x10000",
+            "data": "build/factory/presets.json"
+          },
+          "user_models": {
+            "type": "data",
+            "subtype": "0x42",
+            "offset": "0x1070000",
+            "size": "0x80000"
+          },
+          "storage": {
+            "type": "data",
+            "subtype": "spiffs",
+            "offset": "0x10f0000",
+            "size": "0xf10000"
+          }
+        },
+        "ldFragments": "src/native/gea_memory.lf",
+        "sdkconfig": "src/native/sdkconfig.defaults",
+        "prebuild": "node scripts/pack-factory-assets.mjs",
+        "output": "build/pedalboard.bin",
+        "partitionsByTarget": {
+          "esp32-s3-devkit-n16r8": {
+            "nvs": {
+              "type": "data",
+              "subtype": "nvs",
+              "offset": "0x9000",
+              "size": "0x6000"
+            },
+            "otadata": {
+              "type": "data",
+              "subtype": "ota",
+              "offset": "0xf000",
+              "size": "0x2000"
+            },
+            "phy_init": {
+              "type": "data",
+              "subtype": "phy",
+              "offset": "0x11000",
+              "size": "0x1000"
+            },
+            "ota_0": {
+              "type": "app",
+              "subtype": "ota_0",
+              "offset": "0x20000",
+              "size": "0x400000"
+            },
+            "ota_1": {
+              "type": "app",
+              "subtype": "ota_1",
+              "offset": "0x420000",
+              "size": "0x400000"
+            },
+            "models": {
+              "type": "data",
+              "subtype": "0x40",
+              "offset": "0x820000",
+              "size": "0x40000",
+              "data": "build/factory/models.bin"
+            },
+            "presets": {
+              "type": "data",
+              "subtype": "0x41",
+              "offset": "0x860000",
+              "size": "0x10000",
+              "data": "build/factory/presets.json"
+            },
+            "user_models": {
+              "type": "data",
+              "subtype": "0x42",
+              "offset": "0x870000",
+              "size": "0x80000"
+            },
+            "storage": {
+              "type": "data",
+              "subtype": "spiffs",
+              "offset": "0x8f0000",
+              "size": "0x710000"
+            }
+          }
+        }
+      }
+    },
+    "nativeSources": [
+      "src/native/main/main.cpp",
+      "src/native/drivers/flash_storage.cpp",
+      "src/native/drivers/power.cpp",
+      "src/native/drivers/usb_audio.cpp",
+      "src/native/drivers/usb_host_hooks.cpp",
+      "src/native/audio/s3_dsp_control.cpp",
+      "src/native/audio/s3_pcm_pack.S",
+      "src/native/ui/task.cpp",
+      "src/native/ui/board_bridge.cpp",
+      "src/native/ui/controls.c",
+      "src/native/services/remote_service.cpp",
+      "src/native/services/ble_discovery.cpp",
+      "src/native/services/network_thread.c",
+      "src/native/storage/model_import.cpp",
+      "src/native/storage/sd_models.cpp",
+      "src/native/storage/nam_json.cpp",
+      "src/native/storage/panel_presets.cpp",
+      "src/native/storage/model_catalog.c",
+      "src/native/storage/factory_presets.c",
+      "src/native/storage/preset_json.c",
+      "src/native/diagnostics/heap_map.c",
+      "src/audio/nam/runtime_allocation_plan.c"
+    ],
+    "compilerPlugins": [
+      "scripts/panel-host-plugin.mjs"
+    ],
+    "defines": {
+      "GEA_EMBEDDED_LAZY_GRADIENT_LUTS": 1,
+      "GEA_EMBEDDED_UI_STATE_EXTERNAL": 1,
+      "GEA_EMBEDDED_RENDER_WORKER_STACK_EXTERNAL": 1,
+      "GEA_EMBEDDED_APP_FRAME_TASK_STACK_EXTERNAL": 1,
+      "GEA_EMBEDDED_TOUCH_TASK_STACK_EXTERNAL": 1,
+      "GEA_EMBEDDED_UI_TRANSFORM_CACHE_SLOTS": 4,
+      "GEA_EMBEDDED_UI_DEPTH_CACHE_SLOTS": 4,
+      "GEA_EMBEDDED_UI_CORNER_CACHE_SLOTS": 4,
+      "GEA_EMBEDDED_LINE_BREAK_CACHE_SLOTS": 8,
+      "GEA_EMBEDDED_LINE_BREAK_CACHE_LINES": 8,
+      "GEA_EMBEDDED_RECOLOR_PIXEL_CACHE_SIZE": 64,
+      "GEA_CSS_CACHED_STYLE_APPLY_INLINE_OPS": 16,
+      "GEA_CSS_ACTIVE_RULE_PLAN_INLINE_CACHE_ENTRIES": 2,
+      "GEA_CSS_RULE_CANDIDATE_INLINE_CACHE_ENTRIES": 4,
+      "GEA_INLINE_COMPILED_STYLE_CACHE_ENTRIES": 8,
+      "GEA_EMBEDDED_DEVICE_CONTROL": 0,
+      "GEA_RUNTIME_COMPACT_ALLOCATION": 1,
+      "GEA_EMBEDDED_RUNTIME_TASK_PRIORITY": 18,
+      "GEA_EMBEDDED_TOUCH_TASK_PRIORITY": 21,
+      "GEA_SCROLL_TRACE": 0,
+      "GEA_EMBEDDED_FRAME_SCHEDULER_FPS_LOG": 0,
+      "GEA_EMBEDDED_RUNTIME_TASK_STACK_BYTES": 20480,
+      "GEA_EMBEDDED_RUNTIME_TASK_STACK_EXTERNAL": 1,
+      "GEA_EMBEDDED_DISPLAY_SOFTWARE_LANDSCAPE_PRIMARY": 1,
+      "GEA_EMBEDDED_DISPLAY_ROTATE_LANDSCAPE": 1,
+      "GEA_EMBEDDED_DISPLAY_WIDTH": 502,
+      "GEA_EMBEDDED_DISPLAY_HEIGHT": 410,
+      "GEA_EMBEDDED_DISPLAY_NATIVE_WIDTH": 410,
+      "GEA_EMBEDDED_DISPLAY_NATIVE_HEIGHT": 502,
+      "GEA_EMBEDDED_DISPLAY_CO5300_RECT_PER_CHUNK_DRAIN": 0,
+      "GEA_EMBEDDED_DISPLAY_LANDSCAPE_COLUMN_WINDOWS": 1,
+      "GEA_EMBEDDED_DISPLAY_SPI_TRANSACTION_QUEUE_DEPTH": 4,
+      "GEA_EMBEDDED_DISPLAY_FLUSH_CHUNK_MAX": 16,
+      "GEA_EMBEDDED_DISPLAY_FLUSH_CHUNK_LIMIT": 16,
+      "GEA_EMBEDDED_DISPLAY_FLUSH_QUEUE_DEPTH": 2,
+      "GEA_EMBEDDED_DISPLAY_FLUSH_QUEUE_DEPTH_LIMIT": 2,
+      "GEA_EMBEDDED_DEFAULT_FRAME_INTERVAL_US": 66667,
+      "GEA_EMBEDDED_DISPLAY_INTERNAL_RESERVE_BYTES": 13312,
+      "GEA_EMBEDDED_MAX_NODES": 160
+    },
+    "cssDevicePixelRatio": 2
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

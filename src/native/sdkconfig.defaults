@@ -1,0 +1,279 @@
+# Waveshare ESP32-S3-Touch-AMOLED-2.06: ESP32-S3R8, 32 MB flash, 8 MB octal PSRAM.
+# The flash size comes from the board's own defaults.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+# The partition table comes from gea.targets.esp32.partitions; the CLI writes
+# the CSV into the build directory and points the build at it.
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_FREERTOS_HZ=1000
+# Per-task run time, read by the AUDIO TRY window to say where each core's
+# time went (task run time is the esp_timer clock, sampled at every context
+# switch, so the cost is one timer read per switch).
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# Task stacks are internal DRAM, and internal DRAM is this app's entire budget:
+# the A2-Full arenas need about 213 KB of it (docs/MEMORY.md) out of the
+# ~248 KiB the image leaves, so both stacks below are trimmed from the board's
+# defaults.
+#
+# The main task only runs bring-up: Runtime::boot() mounts SPIFFS, brings the
+# display up and performs the app's first JSX mount here, because that work
+# touches flash and a PSRAM stack cannot. The render loop and touch dispatch run
+# on their own 20,480-byte PSRAM stack (GEA_EMBEDDED_RUNTIME_TASK_STACK_BYTES in
+# gea.defines); app_main then returns, which deletes main_task and hands this
+# stack back to the heap. The stack is still committed while the NAM arenas and
+# the display's DMA staging are claimed, so every kilobyte here is a kilobyte
+# those allocations do not get. Bring-up's deepest point uses about 2,700
+# bytes; 4096 is that plus a 1.5x margin.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+# Per core, so this is two stacks. 1280 is the S3 default and the smallest
+# value that holds: the deepest callback the IPC task runs is
+# spi_flash_op_block_func, dispatched by esp_mmu_map() through
+# spi_flash_disable_interrupts_caches_and_other_cpu(). It suspends the
+# scheduler, masks the non-IRAM interrupts, spins and resumes, and
+# xTaskResumeAll can switch tasks from inside it.
+CONFIG_ESP_IPC_TASK_STACK_SIZE=1280
+# The gea device-control console task is not an sdkconfig option: it is off
+# through GEA_EMBEDDED_DEVICE_CONTROL=0 in gea.defines, which saves another
+# 8,192 bytes. Maintenance mode exposes the same information over the
+# authenticated Wi-Fi API.
+
+# The display SPI ISR does not need to run while flash cache is disabled. Keep
+# the cold display-driver path in flash and reserve internal SRAM for the
+# real-time A2-Full rings.
+# CONFIG_SPI_MASTER_ISR_IN_IRAM is not set
+
+# The native USB Serial/JTAG console is primary, so a host can confirm after
+# flashing that the ROM booted from SPI flash rather than staying in download
+# mode. When the USB audio host starts it takes over the PHY; logs remain
+# available over Wi-Fi in maintenance mode.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# The calibration pass allocates ~430 KiB transiently; it lands in PSRAM.
+CONFIG_SPIRAM=y
+# CONFIG_HEAP_USE_HOOKS is not set
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+# Without this, EXT_RAM_NOINIT_ATTR silently degrades to internal .noinit
+# (esp_attr.h falls back to __NOINIT_ATTR), and the 128 KiB maintenance log
+# ring would overflow dram0_0_seg. The ring is NOINIT rather than BSS because
+# .ext_ram.bss is zeroed on every startup and the log matters most across a
+# restart.
+CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY=y
+# Default malloc objects are control-plane state. Put them in PSRAM so hundreds
+# of small Wi-Fi, lwIP, HTTP, UI and USB bookkeeping allocations cannot split
+# the scarce DMA-capable SRAM into unusable holes. Every latency-sensitive DSP
+# buffer and every DMA object in this target requests MALLOC_CAP_INTERNAL or
+# MALLOC_CAP_DMA explicitly.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=0
+# No DMA reserve pool. ESP-IDF carves the reserve out of the main heap at boot,
+# and the carve lands in the middle of the span NAM needs contiguously for a
+# history bank. With a 32 KiB reserve the audio graph fails to load:
+#
+#   E nam: audio restore failed: Core 0 history bank allocation failed
+#   audio graph released: internal free=158707 largest=31744
+#
+# Free bytes are not the constraint here; one contiguous span is. Do not add a
+# reserve without an AUDIO TRY window proving the bank still allocates.
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0
+# NVS is touched during boot and maintenance, outside the audio callback. Its
+# page cache and key hash do not need scarce internal SRAM.
+CONFIG_NVS_ALLOCATE_CACHE_IN_SPIRAM=y
+# Execute in place from PSRAM. The S3-native run_layer dispatcher is 15 KiB of
+# .text.a2_full_hot that does not fit the 16 KiB instruction cache next to the
+# stage tasks and effects, so every cache miss on it has to be served from
+# somewhere: from flash that is QIO at 80 MHz (4 bits per clock), from octal
+# PSRAM it is 16 bits per clock. Without XIP, stage B (fifteen layers per
+# block) overruns its deadline. XIP also keeps the flash cache enabled during
+# flash writes, since no running code lives behind it; the IRAM options below
+# rely on that.
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+# 32 KiB, pinned: the gea CLI picks 64 KiB for a PSRAM framebuffer unless the
+# app says otherwise, and the extra 32 KiB comes out of the DRAM-only heap
+# region (0x3FCF0000-0x3FCF8000) that the amp graph's histories need. See
+# docs/MEMORY.md.
+CONFIG_ESP32S3_DATA_CACHE_32KB=y
+# A 16 KiB instruction cache is not a performance preference here, it is the
+# budget. The board target asks for 32 KiB, which claims SRAM0
+# 0x40374000-0x40378000 -- the IRAM-only region -- so the whole of .iram0.text
+# has to live inside DIRAM, where it is mirrored as .dram0.dummy: 133,632 bytes
+# of mirror instead of 116,992, and every one of those 16,640 bytes comes off
+# the internal heap. docs/MEMORY.md describes where the rest goes; the A2-Full
+# arenas take about 213 KB of it, and with the larger cache the model does not
+# load at all ("S3-native runtime allocation failed").
+# Kconfig choices do not layer: selecting 16KB while the board's file still
+# selects 32KB leaves 32KB standing, so the board's member is unset first.
+# CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB is not set
+CONFIG_ESP32S3_INSTRUCTION_CACHE_16KB=y
+
+# This board always has PSRAM. Requiring it keeps Wi-Fi/LwIP allocations in
+# external RAM instead of silently falling back to and fragmenting internal
+# DMA-capable SRAM.
+# CONFIG_SPIRAM_IGNORE_NOTFOUND is not set
+
+# Audio-class devices ship configuration descriptors far beyond the 256-byte
+# default enumeration buffer. The buffer is a static DRAM array (s_ctrl_data),
+# so it is sized to 1024 rather than 2048: the XTONE Pro's whole configuration
+# descriptor is 375 bytes.
+CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=1024
+
+# Stereo 24-bit iso OUT packets need the OTG FIFO biased toward periodic OUT;
+# the default balanced split caps iso OUT at 128 bytes.
+CONFIG_USB_HOST_HW_BUFFER_BIAS_PERIODIC_OUT=y
+
+# The interface may sit behind a powered hub; without this the host stack
+# never enumerates past the hub.
+CONFIG_USB_HOST_HUBS_SUPPORTED=y
+
+# Authenticated Wi-Fi maintenance plane. The radio task lives on Core 1 but is
+# lowered below the real-time NAM stage immediately after esp_wifi_init(). TCP,
+# HTTP and discovery tasks are also below both audio stages.
+CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_1=y
+# Wi-Fi remains available in the production audio image. Its default IRAM and
+# RX-IRAM optimizations permanently consume the same internal SRAM bank used by
+# USB DMA, so keep those cold paths in flash and reserve SRAM for realtime work.
+# CONFIG_ESP_WIFI_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=4
+CONFIG_ESP_WIFI_CACHE_TX_BUFFER_NUM=2
+CONFIG_ESP_WIFI_MGMT_SBUF_NUM=16
+CONFIG_ESP_WIFI_RX_BA_WIN=8
+CONFIG_ESP_WIFI_DYNAMIC_RX_MGMT_BUFFER=y
+# CONFIG_ESP_WIFI_STATIC_RX_MGMT_BUFFER is not set
+# CONFIG_ESP_WIFI_AMPDU_TX_ENABLED is not set
+# CONFIG_ESP_WIFI_AMPDU_RX_ENABLED is not set
+CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=256
+
+# If a newly OTA'd image cannot remain alive for the validation window, the
+# bootloader returns to the previous slot on the next reset.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# BLE discovery complements authenticated Wi-Fi OTA in explicit maintenance mode.
+# OFF: the controller cannot live in PSRAM, so it competes for the same internal
+# DMA blocks the display flush pipeline stages through. With it enabled the
+# display was left ~11 KB at Display::init() in audio mode and fell to a 1-row,
+# 1-deep pipeline, which disables the CS-held streaming path outright
+# (display.cpp canUseFramebufferColorStream). Turning it off frees ~38 KB
+# internal and ~288 KB flash. Re-enable with =y if BLE discovery is wanted back;
+# expect to drop GEA_EMBEDDED_DISPLAY_INTERNAL_RESERVE_BYTES to suit.
+CONFIG_BT_ENABLED=n
+# The controller's code belongs in flash, not IRAM. Every IRAM byte the image
+# uses is a DRAM byte the heap does not get (.dram0.dummy is sized to the IRAM
+# the image used), and the A2-Full coefficient banks need internal blocks on
+# 32 KiB boundaries. With the controller in IRAM the largest free internal
+# block is 1 KiB short of a single aligned window and the model load fails with
+# "S3-native coefficient allocation failed".
+CONFIG_BT_CTRL_RUN_IN_FLASH_ONLY=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+# The pedal never bonds -- maintenance advertising is discovery-only -- but
+# IDF 6's ble_store_nvs.c only builds at NimBLE's own default of 3. At 0 it
+# reads bond arrays that ble_store_config.c defines only under
+# `#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)`; at 1 its sort loop indexes [i + 1] past
+# a one-element array and -Werror=array-bounds rejects it. The slots go unused.
+CONFIG_BT_NIMBLE_MAX_BONDS=3
+# CONFIG_BT_NIMBLE_ROLE_CENTRAL is not set
+# CONFIG_BT_NIMBLE_ROLE_OBSERVER is not set
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
+
+
+# Every byte reclaimed from IRAM becomes a byte of internal DRAM heap: the
+# linker sizes .dram0.dummy to whatever IRAM the image used, so shrinking IRAM
+# moves .dram0.data (and heap_start with it) down one-for-one. The reverb's Q15
+# tank lines and its CompactReverb state compete for exactly that heap against
+# the NAM arenas, which take about 213 KB of it. See docs/MEMORY.md.
+#
+# CONFIG_SPI_FLASH_ROM_IMPL cannot be used on this board. ESP-IDF rejects it at
+# compile time for a 32 MB part:
+#
+#   esp_flash_spi_init.c:45: #error "Flash chip size equal or over 32MB memory
+#                                    cannot use driver in ROM"
+#
+# The allocator can live in flash only because of XIP from PSRAM (above): with
+# it, esp-idf's SPI_FLASH_CACHE_NO_DISABLE is true (spi_flash_os_func_app.c), so
+# a flash write does not turn the cache off. Without XIP, any flash write --
+# including the NVS writes of an ordinary mode change -- disables the cache,
+# and an allocation inside that window cannot fetch heap code from flash; the
+# board resets on entering maintenance. The IRAM this gives back, together with
+# the libc lock API below, is what pays for A2FullS3Native::run_layer in IRAM
+# (nam_a2_full_s3_native.cpp).
+CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
+# Same reasoning: the lock API only needs IRAM for callers that run with the
+# cache disabled, and with XIP there are none.
+CONFIG_LIBC_LOCKS_PLACE_IN_IRAM=n
+
+# Octal-flash chip support is dead code here: the part runs QIO
+# (CONFIG_ESPTOOLPY_FLASHMODE_QIO), so the MXIC OPI driver can never be the
+# selected chip. Its detection and command tables sit in IRAM regardless, and
+# IRAM is internal heap.
+# CONFIG_SPI_FLASH_SUPPORT_MXIC_OPI_CHIP is not set
+
+# Heap tracing is a debug facility nothing in this firmware calls. It costs
+# about 1 KiB of .iram0.text plus a hook on the allocator's hot path. On this
+# part IRAM is not spare space: every byte of .iram0.text is a byte the internal
+# heap never gets, and the internal heap is where FreeRTOS task stacks, the USB
+# host's enumeration driver and NAM's aligned banks come from. With the A2-Full
+# graph resident the largest free internal block is already smaller than the
+# 4 KiB UI pump stack, so a kilobyte here is not rounding error. The
+# framework's only users are gated on GEA_EMBEDDED_HEAP_DIAGNOSTICS_LOG, which
+# is off here.
+CONFIG_HEAP_TRACING_OFF=y
+# CONFIG_HEAP_TRACING_STANDALONE is not set
+# CONFIG_HEAP_TRACING_TOHOST is not set
+# CONFIG_HEAP_TRACING is not set
+
+# Flash chip drivers for parts that are not fitted. The board carries a
+# GigaDevice GD25Q256 (JEDEC 0xC84019), so only the generic and GD drivers can
+# ever probe successfully. Winbond's must stay: spi_flash_chip_gd.c #defines its
+# own read, page-program and erase entry points onto Winbond's implementations,
+# so removing it breaks the driver that is actually in use.
+# CONFIG_SPI_FLASH_SUPPORT_ISSI_CHIP is not set
+# CONFIG_SPI_FLASH_SUPPORT_MXIC_CHIP is not set
+# CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP is not set
+# CONFIG_SPI_FLASH_SUPPORT_TH_CHIP is not set
+
+# The SPI slave driver is never used on this board, and its ISR is in IRAM by
+# default. On the S3 that region is DIRAM: every byte of IRAM costs a byte of
+# DRAM one-for-one, and DRAM is what the A2-Full NAM graph and the reverb's
+# internal delay lines are short of. Nothing here touches the cache-disabled
+# flash path.
+CONFIG_SPI_SLAVE_ISR_IN_IRAM=n
+
+# On the S3 every byte of IRAM costs a byte of DRAM one-for-one (the
+# .dram0.dummy hole), so IRAM reclaims convert directly into internal heap the
+# A2-Full graph and the reverb's link-time arena can use.
+#
+# I2C_MASTER_ISR_HANDLER_IN_IRAM: 819 bytes. The only I2C master here is the
+# FT3168 touch controller. Without the IRAM flag its ISR is masked for the
+# duration of a flash write instead of running from flash, so the worst case is
+# a touch sample dropped while a preset is being saved -- not a fault.
+#
+# RTC_CLK_FUNC_IN_IRAM / RTC_TIME_FUNC_IN_IRAM cannot be turned off on this
+# IDF: ESP_HW_SUPPORT_FUNC_IN_IRAM (no prompt, default y unless
+# SPI_FLASH_AUTO_SUSPEND) `select`s both, so an "=n" here is silently ignored.
+# The same gate hides ESP_SYSTEM_IN_IRAM, LIBC_MISC_IN_IRAM, ESP_INTR_IN_IRAM,
+# LOG_IN_IRAM, ESP_TIMER_IN_IRAM and SPI_FLASH_PLACE_FUNCTIONS_IN_IRAM (about
+# 25 KiB together). Auto-suspend is not an option: the board's GD25Q256 (JEDEC
+# C84019) is not in spi_flash_chip_gd.c's suspend list, so the driver would
+# refuse it.
+CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM=n
+
+# ESP_PHY_IRAM_OPT does nothing on the S3: libphy's 5,126 bytes of IRAM are the
+# blob's own .iram1 sections, not a placement the option controls. Left at the
+# default.

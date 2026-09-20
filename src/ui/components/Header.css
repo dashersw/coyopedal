@@ -1,0 +1,29 @@
+.back {
+  position: absolute;
+  left: 35px;
+  top: 13px;
+  height: 29px;
+  max-width: 184px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 18px !important;
+  white-space: nowrap;
+}
+
+.back.with-subtitle {
+  top: 5px;
+}
+
+.chevron {
+  font-size: 22px;
+}
+
+.header-subtitle {
+  position: absolute;
+  top: 29px;
+  left: 35px;
+  white-space: nowrap;
+  max-width: 185px;
+  overflow: hidden;
+}

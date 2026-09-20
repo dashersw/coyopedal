@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3000", "--strictPort"],
+      "port": 3000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "serve:web"],
+      "port": 8791,
+      "url": "http://127.0.0.1:8791"
+    }
+  ]
+}

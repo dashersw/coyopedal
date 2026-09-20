@@ -1,0 +1,166 @@
+@font-face {
+  font-family: Saira;
+  font-weight: 700;
+  src: url('../../../assets/fonts/Saira-Bold-Pedal.otf');
+}
+
+.pedalboard {
+  position: relative;
+  width: 251px;
+  height: 205px;
+  background: #000000;
+  color: #f0f2ed;
+  font-family: Saira, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 65px;
+  overflow: hidden;
+  line-height: 1.15;
+}
+
+.pedalboard * {
+  box-sizing: border-box;
+}
+
+.pedalboard button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pedalboard button:focus-visible {
+  outline: 1px solid #f0f2ed;
+  outline-offset: -2px;
+}
+
+.pedalboard small {
+  font-size: 11px;
+  color: #93a0aa;
+}
+
+.header {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 251px;
+  height: 46px;
+  background: #000000;
+}
+
+.pedalboard .pill {
+  height: 29px;
+  border-radius: 14px;
+  background: #343d45;
+  active-background-color: #343d45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 15px;
+}
+
+.header-action {
+  position: absolute;
+  left: 178px;
+  top: 13px;
+  width: 43px;
+}
+
+.scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #93a0aa transparent;
+}
+
+.pedalboard .wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  left: 28px;
+  width: 195px;
+  height: 28px;
+  border-radius: 9px;
+  background: #343d45;
+  active-background-color: #343d45;
+  font-size: 15px;
+}
+
+/* State is a circle, never a background: the panel's own press highlight is
+   switched off too (active-background-color equal to the background), so a
+   button looks the same while a finger is on it. */
+.status-dot {
+  display: block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  border-width: 2px;
+  border-style: solid;
+}
+
+/* The native build evaluates a computed class once, so a dot's state is a
+   choice between elements, and each colour is its own class (no two classes
+   on one dot set the same property). */
+.dot-off {
+  border-color: #5c6870;
+}
+
+.dot-on {
+  border-color: #f0f2ed;
+  background: #f0f2ed;
+}
+
+.first {
+  top: 83px;
+}
+
+.second {
+  top: 117px;
+}
+
+.third {
+  top: 151px;
+}
+
+.screen-caption {
+  position: absolute;
+  top: 55px;
+  left: 28px;
+  width: 195px;
+  text-align: center;
+  font-size: 11px;
+  color: #93a0aa;
+}
+
+.error-message {
+  position: absolute;
+  top: 47px;
+  left: 26px;
+  width: 199px;
+  min-height: 25px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #743d33;
+  font-size: 11px;
+}
+
+.loading-model {
+  position: absolute;
+  left: 25px;
+  top: 72px;
+  width: 201px;
+  height: 60px;
+  border-radius: 10px;
+  background: #343d45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}

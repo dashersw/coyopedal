@@ -1,0 +1,14 @@
+[
+  {
+    "id": "volum-herbert-1-v30",
+    "name": "Diezel Herbert C1 V30",
+    "file": "assets/models/volum-herbert-1-v30.namb",
+    "required": true
+  },
+  {
+    "id": "volum-ampete-4-v30",
+    "name": "Ampete One C4 V30",
+    "file": "assets/models/volum-ampete-4-v30.namb",
+    "required": true
+  }
+]

@@ -1,0 +1,93 @@
+/* Four rows and a pager inside the same band Presets uses (top 50, bottom 150),
+   so the two list screens line up. A row is one line: name left, and the
+   subtitle -- capture counts in the folders, channel/cabinet on a capture --
+   right, which is what fits once four of them share 100px. */
+.model-list {
+  position: absolute;
+  left: 22px;
+  top: 50px;
+  width: 211px;
+  height: 100px;
+}
+
+.pedalboard .model-row {
+  width: 211px;
+  height: 22px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  background: #242c33;
+  active-background-color: #242c33;
+  border-radius: 7px;
+  margin-bottom: 3px;
+  text-align: left;
+}
+
+.model-row span {
+  font-size: 13px;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.model-row .status-dot {
+  flex: none;
+}
+
+.model-row small {
+  font-size: 11px;
+  color: #93a0aa;
+  white-space: nowrap;
+}
+
+.model-row .row-chevron {
+  flex: none;
+  font-size: 13px;
+  color: #93a0aa;
+}
+
+.pager {
+  position: absolute;
+  left: 22px;
+  top: 155px;
+  width: 211px;
+  height: 28px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.pedalboard .pager-step {
+  width: 62px;
+  height: 28px;
+  border-radius: 9px;
+  background: #242c33;
+  active-background-color: #242c33;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pedalboard .pager-step[aria-disabled='true'] {
+  color: #4a555e;
+}
+
+.pager-count {
+  font-size: 11px;
+  color: #93a0aa;
+}
+
+.empty-library {
+  position: absolute;
+  left: 22px;
+  top: 96px;
+  width: 211px;
+  text-align: center;
+}

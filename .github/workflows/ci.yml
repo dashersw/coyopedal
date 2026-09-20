@@ -1,0 +1,159 @@
+name: CI
+
+# Everything about this repo that can be checked without the pedal in hand.
+#
+# The board is the one thing a runner cannot have, so the firmware job builds
+# the image and stops there. That is not a token gesture: the amp graph, the
+# panel and the drivers only ever meet at the link step, and a framework bump
+# that breaks them breaks it there, where CI can see it, rather than on a
+# player's board.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push supersedes the first: nothing here needs to finish for an
+# already-replaced commit. Deployment is a separate workflow and does not
+# cancel, because a half-uploaded site is worse than a slow one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # package.json's engines floor. Pinned rather than "22.x" so a Node release
+  # is a commit here, not a Tuesday morning surprise.
+  NODE_VERSION: '22.13.0'
+  # The Emscripten the web build is verified against. module.js and module.wasm
+  # are one program in two files and the page pairs them by content hash, so
+  # which compiler produced them is part of what is being tested.
+  EMSDK_VERSION: '4.0.18'
+
+jobs:
+  checks:
+    name: Lint, types and formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      # ruff and cmake-format live in a virtualenv the format script owns, so
+      # that whichever Python a machine happens to have is never what decides
+      # how the tree looks.
+      - run: npm run format:setup
+      - run: npm run lint
+      - run: npm run check:frontend
+      - run: npm run format:check
+
+  tests:
+    name: Host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      # The USB descriptor parsers, the effects, the preset document and the
+      # prepared NAM model, compiled with the runner's own g++ -- the USB tests
+      # under ASan and UBSan, which is where a descriptor from a real interface
+      # gets to prove it cannot walk off the end of a buffer.
+      - run: bash scripts/test.sh
+
+  web:
+    name: Web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-${{ env.EMSDK_VERSION }}
+      - run: npm ci
+      # sysctl is how the build script counts cores, which on Linux answers
+      # nothing and falls back to 8. Tell it what the runner actually has.
+      - run: GEA_WEB_JOBS=$(nproc) npm run build:web-wasm
+      # The same staging the deploy does, so a pull request can be opened and
+      # the exact bytes that would go live downloaded and served locally.
+      - run: bash scripts/deploy-web.sh --stage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: build/site
+          if-no-files-found: error
+
+  firmware:
+    name: Firmware image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The UI font is rasterized at build time from the TTF in the repo.
+      - run: pip install pillow fonttools
+      # ESP-IDF and the Xtensa toolchain are about two gigabytes and do not
+      # change between commits; the version is in the key so a bump refetches.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/esp
+            ~/.espressif
+          key: esp-idf-6.0.2-${{ runner.os }}
+      - run: npm ci
+      - run: npx gea setup --esp-idf
+      # A board alias is normally created by `gea setup` against a board that is
+      # plugged in, and it remembers that unit's USB serial number. A build
+      # needs neither: what it reads is the target, which says which display,
+      # which chip and how much flash. So CI writes the alias itself rather than
+      # carrying a developer's own .gea/boards.json, which is gitignored and
+      # names their hardware.
+      - name: Name the board this image is for
+        run: |
+          mkdir -p .gea
+          cat > .gea/ci-boards.json <<'JSON'
+          {
+            "amoled": {
+              "target": "esp32-s3-touch-amoled-2.06",
+              "adapter": "esp32-idf",
+              "flashSize": "32MB"
+            }
+          }
+          JSON
+      # geatsc resolves the host type table -- which TypeScript name is carried
+      # by which C++ type -- with a require rooted at the compiler's own install,
+      # and an empty table is not an error until certification, which then fails
+      # as "the target manifest registers no native-boundary Document@1". Saying
+      # where the shims are keeps that from ever being the failure CI reports.
+      - name: Build
+        env:
+          GEATSC2_GEA_PLUGIN: ${{ github.workspace }}/node_modules/@geastack/geatsc-plugin-gea/dist/host-shims
+        run: npx gea build --board amoled --boards-config .gea/ci-boards.json
+      # The allocator wraps the IDF's TLSF, so it is compiled against the IDF
+      # the image above was built with. This is the only job that has one; the
+      # host-test job skips it.
+      - run: bash scripts/test-bank-allocator.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pedalboard.bin
+          path: build/pedalboard.bin
+          if-no-files-found: error

@@ -1,0 +1,76 @@
+{
+  "name": "nam-pedalboard-web",
+  "license": "GPL-3.0-only",
+  "private": true,
+  "version": "0.0.0",
+  "gea": {
+    "id": "nam-pedalboard-web",
+    "name": "NAM Pedalboard Web",
+    "entry": "main.tsx",
+    "runtime": "gea",
+    "targets": {
+      "web": true
+    },
+    "compilerPlugins": [
+      "../scripts/panel-host-plugin.mjs"
+    ],
+    "nativeSources": [
+      "board_platform.cpp",
+      "pedal_audio.cpp",
+      "sd_models_web.cpp",
+      "../src/native/ui/board_bridge.cpp",
+      "../src/native/ui/controls.c",
+      "../src/native/storage/model_catalog.c",
+      "../src/native/storage/factory_presets.c",
+      "../src/native/storage/preset_json.c",
+      "../src/native/storage/nam_json.cpp",
+      "../src/native/storage/panel_presets.cpp",
+      "../src/audio/processor.cpp",
+      "../src/audio/effects.cpp",
+      "../src/audio/tuner.cpp",
+      "../src/audio/nam/nam_a2_full_s3_native.cpp",
+      "../src/audio/nam/runtime_allocation_plan.c",
+      "../third_party/cjson/cJSON.c"
+    ],
+    "web": {
+      "includeDirs": [
+        "board_shims",
+        "../src",
+        "../src/audio/nam",
+        "../src/native/ui",
+        "../src/native/storage",
+        "../src/native/drivers",
+        "../src/native/services",
+        "../third_party/cjson"
+      ],
+      "compileOptions": [
+        "-matomics",
+        "-mbulk-memory",
+        "-msimd128",
+        "-DCOYOPEDAL_PEDAL_BLOCK_FRAMES=64",
+        "-DCOYOPEDAL_PEDAL_S3_SPLIT_LAYER=8"
+      ],
+      "linkOptions": [
+        "-sWASM_WORKERS=1",
+        "-sAUDIO_WORKLET=1",
+        "-sENVIRONMENT=web,worker",
+        "-sALLOW_MEMORY_GROWTH=0",
+        "-sINITIAL_MEMORY=201326592"
+      ],
+      "exportedFunctions": [
+        "_pedal_audio_start",
+        "_pedal_audio_running",
+        "_pedal_audio_telemetry",
+        "_pedal_audio_load_model",
+        "_pedal_audio_set_input_channel",
+        "_pedal_board_boot",
+        "_pedal_sd_reset",
+        "_pedal_sd_add",
+        "_pedal_sd_mount",
+        "_pedal_sd_file_count",
+        "_pedal_sd_presets_import"
+      ]
+    },
+    "cssDevicePixelRatio": 2
+  }
+}
