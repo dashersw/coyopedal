@@ -114,7 +114,7 @@ The full VoLum library is published in the
 copies it to a mounted card as `/nam/VoLum/<amp>/`:
 
 ```bash
-python3 tools/fetch_volum.py /Volumes/SDCARD
+npm run fetch:volum -- /Volumes/SDCARD
 ```
 
 ### The same captures in a browser
@@ -138,7 +138,9 @@ page read one, so there the writes are kept in the browser's own storage.
 ### Requirements
 
 - Git and Node.js 22.13 or newer
-- Python 3 with Pillow and fontTools, used to rasterize the UI font
+- Python 3 with Pillow and fontTools, used to rasterize the UI font. The npm
+  scripts find it under whichever name the platform uses (`python3`, `python`
+  or the Windows `py` launcher).
 - A C++20 compiler and CMake, for the host tests
 - The [Emscripten SDK](https://emscripten.org/) on `PATH`, for the web build only
 
@@ -168,7 +170,21 @@ The Gea CLI installs everything else, including ESP-IDF.
    npm ci
    ```
 
-4. Connect the board over USB and register it:
+4. Generate the Wi-Fi configuration. Maintenance mode, OTA updates and the
+   remote tools are compiled in only when `src/native/services/remote_config.h`
+   exists; a clone does not have it, and a build without it is a pedal with no
+   radio at all. The file is gitignored because it holds the credentials.
+
+   ```bash
+   npm run remote:configure -- --ssid YOUR_WIFI
+   ```
+
+   It asks for the Wi-Fi password; the pedal joins that network in maintenance
+   mode. Skipping this step is allowed: the build then writes a disabled stub
+   in its place, and generating the real file later and building again is
+   enough.
+
+5. Connect the board over USB and register it:
 
    ```bash
    gea setup
@@ -182,7 +198,7 @@ The Gea CLI installs everything else, including ESP-IDF.
    For a board without a screen, see [Another board](#another-board) below; the
    rest of this section is the same.
 
-5. Check the toolchain and the board:
+6. Check the toolchain and the board:
 
    ```bash
    gea doctor
@@ -313,15 +329,17 @@ reboot into audio mode with the radios off. The pedal always starts in audio
 mode, unless the previous boot crashed.
 
 Wi-Fi credentials and the authentication token are compiled into the firmware
-from `src/native/services/remote_config.h`, which is gitignored. Generate it
-before building:
+from `src/native/services/remote_config.h`, which is gitignored. Without that
+file the whole service, and with it Wi-Fi, BLE and the HTTP server, is left out
+of the image, about 400 KB less flash, and the pedal cannot enter maintenance
+mode. Generate it before building:
 
 ```bash
-python3 tools/esp32/configure_remote.py --mode ap
+npm run remote:configure -- --ssid YOUR_WIFI
 ```
 
-`--mode ap` makes the pedal host its own access point at `192.168.4.1`.
-`--mode station --ssid YOUR_WIFI` joins an existing network instead.
+The pedal joins that network in maintenance mode and `amoled_remote.py
+discover` finds it there.
 [`remote_config.h.example`](src/native/services/remote_config.h.example) shows
 the generated format.
 
@@ -329,11 +347,11 @@ With the pedal in maintenance mode, `tools/esp32/amoled_remote.py` finds it,
 reads its logs and updates it:
 
 ```bash
-python3 tools/esp32/amoled_remote.py discover
+npm run remote -- discover
 ```
 
 ```bash
-python3 tools/esp32/amoled_remote.py --host PEDAL_IP ota
+npm run remote -- --host PEDAL_IP ota
 ```
 
 `ota` uploads `build/pedalboard.bin` unless you pass another image. After an OTA

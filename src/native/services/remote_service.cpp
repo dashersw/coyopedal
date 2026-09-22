@@ -5,7 +5,6 @@
 #include "remote_config.h"
 #else
 #define COYOPEDAL_REMOTE_ENABLED 0
-#define COYOPEDAL_REMOTE_MODE_AP 1
 #define COYOPEDAL_REMOTE_DISABLE_USB_AUDIO 0
 #define COYOPEDAL_REMOTE_WIFI_SSID ""
 #define COYOPEDAL_REMOTE_WIFI_PASSWORD ""
@@ -1865,7 +1864,6 @@ bool start_http_server() {
     return base_ready;
 }
 
-#if !COYOPEDAL_REMOTE_MODE_AP
 void wifi_event(void*, esp_event_base_t event_base, const std::int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
         const auto* const event = static_cast<wifi_event_sta_connected_t*>(event_data);
@@ -1913,7 +1911,6 @@ void wifi_event(void*, esp_event_base_t event_base, const std::int32_t event_id,
         set_network_status(true, true, detail);
     }
 }
-#endif
 
 bool start_wifi() {
     if (esp_netif_init() != ESP_OK) {
@@ -1956,27 +1953,6 @@ bool start_wifi() {
 
     if (esp_wifi_set_storage(WIFI_STORAGE_RAM) != ESP_OK)
         return false;
-#if COYOPEDAL_REMOTE_MODE_AP
-    g_wifi_netif = esp_netif_create_default_wifi_ap();
-    if (!g_wifi_netif)
-        return false;
-    wifi_config_t network{};
-    std::snprintf(g_network_name, sizeof g_network_name, "%s-%02X%02X%02X",
-                  COYOPEDAL_REMOTE_WIFI_SSID, g_mac[3], g_mac[4], g_mac[5]);
-    const std::size_t ssid_bytes = std::min(std::strlen(g_network_name), sizeof network.ap.ssid);
-    std::memcpy(network.ap.ssid, g_network_name, ssid_bytes);
-    std::snprintf(reinterpret_cast<char*>(network.ap.password), sizeof network.ap.password, "%s",
-                  COYOPEDAL_REMOTE_WIFI_PASSWORD);
-    network.ap.ssid_len = static_cast<std::uint8_t>(ssid_bytes);
-    network.ap.channel = 6;
-    network.ap.max_connection = 2;
-    network.ap.authmode = WIFI_AUTH_WPA2_PSK;
-    network.ap.pmf_cfg.required = true;
-    if (esp_wifi_set_mode(WIFI_MODE_AP) != ESP_OK)
-        return false;
-    if (esp_wifi_set_config(WIFI_IF_AP, &network) != ESP_OK)
-        return false;
-#else
     g_wifi_netif = esp_netif_create_default_wifi_sta();
     if (!g_wifi_netif)
         return false;
@@ -2011,12 +1987,10 @@ bool start_wifi() {
     if (esp_wifi_set_config(WIFI_IF_STA, &network) != ESP_OK)
         return false;
     set_network_status(true, false, "CONNECTING");
-#endif
     if (esp_wifi_start() != ESP_OK) {
         set_network_status(false, false, "WI-FI START FAILED");
         return false;
     }
-#if !COYOPEDAL_REMOTE_MODE_AP
     // Keep station-mode OTA/status reachable without making the radio driver
     // preempt the Core 1 NAM stage continuously while the network is idle.
     // Active HTTP/OTA traffic wakes the modem automatically.
@@ -2036,14 +2010,6 @@ bool start_wifi() {
             vTaskPrioritySet(g_wifi_task, kWifiPriority);
         }
     }
-#endif
-#else
-    if (g_wifi_task != nullptr) {
-        vTaskPrioritySet(g_wifi_task, kWifiPriority);
-    }
-    ESP_LOGI(kTag, "maintenance AP %s ready at 192.168.4.1:%u", g_network_name,
-             static_cast<unsigned>(kHttpPort));
-    set_network_status(true, true, "CONNECTED - 192.168.4.1");
 #endif
     return true;
 }

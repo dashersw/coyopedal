@@ -14,11 +14,11 @@ changes move them, and stale numbers have already led to wrong conclusions.
 - The radios are **off** in audio mode. Wi-Fi and BLE run only in **maintenance mode**. To enter
   it, tap the preset name, then Setup, then Maintenance mode. The BOOT button also works.
 - Credentials live in `src/native/services/remote_config.h` (gitignored). Create them with
-  `python3 tools/esp32/configure_remote.py`.
-- Remote tool: `python3 tools/esp32/amoled_remote.py [--host IP] <verb>`. The main verbs are
+  `npm run remote:configure -- --ssid YOUR_WIFI`.
+- Remote tool: `npm run remote -- [--host IP] <verb>`. The main verbs are
   `discover`, `status`, `logs [--follow]`, `command <TEXT>`, `ota <image>`, `audio-mode`,
   `live-status`, `effects-profile`. `command HELP` lists every device command.
-- The usual host is in `.gea/boards.json` (`transports.ota.host`). AP mode uses `192.168.4.1`.
+- The usual host is in `.gea/boards.json` (`transports.ota.host`).
 
 ## The measurement loop
 

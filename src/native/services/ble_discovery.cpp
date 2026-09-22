@@ -35,8 +35,6 @@ int read_info(uint16_t, uint16_t, ble_gatt_access_ctxt* ctx, void*) {
         return BLE_ATT_ERR_READ_NOT_PERMITTED;
     esp_netif_ip_info_t ip{};
     auto* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (!netif)
-        netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
     if (netif)
         esp_netif_get_ip_info(netif, &ip);
     char value[128];

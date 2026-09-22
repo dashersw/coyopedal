@@ -57,10 +57,6 @@ class Config:
         self.ssid = macro(text, "COYOPEDAL_REMOTE_WIFI_SSID")
         self.password = macro(text, "COYOPEDAL_REMOTE_WIFI_PASSWORD")
         self.token = macro(text, "COYOPEDAL_REMOTE_TOKEN")
-        mode = re.search(r"^#define\s+COYOPEDAL_REMOTE_MODE_AP\s+([01])\s*$", text, re.M)
-        if not mode:
-            fail(f"Missing COYOPEDAL_REMOTE_MODE_AP in {CONFIG_PATH}.")
-        self.ap_mode = mode.group(1) == "1"
 
 
 def discover(config: Config, timeout: float = 2.0) -> list[tuple[str, dict[str, object]]]:
@@ -165,8 +161,6 @@ def realtime_request(
 def resolve_host(args: argparse.Namespace, config: Config) -> str:
     if args.host:
         return args.host
-    if config.ap_mode:
-        return "192.168.4.1"
     found = discover(config)
     if len(found) == 1:
         return found[0][0]
@@ -488,10 +482,10 @@ def effects_soak(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", help="device IP; AP mode defaults to 192.168.4.1")
+    parser.add_argument("--host", help="device IP; found by discovery when omitted")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("discover")
-    subcommands.add_parser("credentials", help="show the AP credentials stored locally")
+    subcommands.add_parser("credentials", help="show the Wi-Fi credentials stored locally")
     subcommands.add_parser("status")
     subcommands.add_parser(
         "live-status",

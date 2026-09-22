@@ -19,6 +19,9 @@
     "build": "npm run build:web",
     "build:firmware": "gea build --board amoled",
     "flash:firmware": "gea flash --board amoled",
+    "remote:configure": "node scripts/python.mjs tools/esp32/configure_remote.py",
+    "remote": "node scripts/python.mjs tools/esp32/amoled_remote.py",
+    "fetch:volum": "node scripts/python.mjs tools/fetch_volum.py",
     "build:web-wasm": "bash scripts/build-web-wasm.sh",
     "serve:web": "node scripts/serve-web.mjs"
   },

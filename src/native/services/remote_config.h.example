@@ -1,14 +1,11 @@
 #pragma once
 
 // Generate the real, gitignored remote_config.h with:
-//   python3 tools/esp32/configure_remote.py --mode ap
-// or:
-//   python3 tools/esp32/configure_remote.py --mode station --ssid YOUR_WIFI
-// The generator prompts for passwords without placing them in shell history.
+//   npm run remote:configure -- --ssid YOUR_WIFI
+// The generator prompts for the password without placing it in shell history.
 
 #define COYOPEDAL_REMOTE_ENABLED 1
-#define COYOPEDAL_REMOTE_MODE_AP 1
 #define COYOPEDAL_REMOTE_DISABLE_USB_AUDIO 0
-#define COYOPEDAL_REMOTE_WIFI_SSID "CoyoPedal-AMOLED"
-#define COYOPEDAL_REMOTE_WIFI_PASSWORD "replace-with-random-wpa2-password"
+#define COYOPEDAL_REMOTE_WIFI_SSID "YOUR_WIFI"
+#define COYOPEDAL_REMOTE_WIFI_PASSWORD "replace-with-your-wpa2-password"
 #define COYOPEDAL_REMOTE_TOKEN "replace-with-at-least-32-random-characters"
