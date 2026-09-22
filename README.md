@@ -6,6 +6,7 @@
 
 [![CI](https://github.com/dashersw/coyopedal/actions/workflows/ci.yml/badge.svg)](https://github.com/dashersw/coyopedal/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/dashersw/coyopedal?sponsor=1)
 
 A standalone guitar amp and effects pedal built on the Waveshare
 **ESP32-S3-Touch-AMOLED-2.06**. It runs full-size
