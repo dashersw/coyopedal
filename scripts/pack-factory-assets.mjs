@@ -53,7 +53,9 @@ if (!existsSync(remoteConfig)) {
       '',
     ].join('\n'),
   )
-  process.stdout.write('pack-factory-assets: no remote_config.h, wrote a disabled stub (remote service compiled out)\n')
+  process.stdout.write(
+    'pack-factory-assets: no remote_config.h, wrote a disabled stub (remote service compiled out)\n',
+  )
 }
 
 const python = resolvePython()

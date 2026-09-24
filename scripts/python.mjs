@@ -10,14 +10,26 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
-const candidates = process.platform === 'win32'
-  ? [['py', ['-3']], ['python', []], ['python3', []]]
-  : [['python3', []], ['python', []]]
+const candidates =
+  process.platform === 'win32'
+    ? [
+        ['py', ['-3']],
+        ['python', []],
+        ['python3', []],
+      ]
+    : [
+        ['python3', []],
+        ['python', []],
+      ]
 
 export function resolvePython(env = process.env) {
   for (const [command, prefix] of candidates) {
     try {
-      const banner = execFileSync(command, [...prefix, '--version'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      const banner = execFileSync(command, [...prefix, '--version'], {
+        env,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
       if (/^Python 3\./.test(banner.trim())) return { command, prefix }
     } catch {
       // not installed, or the Store stub: try the next name
@@ -29,7 +41,10 @@ export function resolvePython(env = process.env) {
 // Spawn `python <args>` with inherited stdio and return the exit status.
 export function runPython(args, options = {}) {
   const python = resolvePython(options.env)
-  const result = spawnSync(python.command, [...python.prefix, ...args], { stdio: 'inherit', ...options })
+  const result = spawnSync(python.command, [...python.prefix, ...args], {
+    stdio: 'inherit',
+    ...options,
+  })
   if (result.error) throw result.error
   return result.status ?? 1
 }
