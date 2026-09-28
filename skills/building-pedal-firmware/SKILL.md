@@ -8,6 +8,13 @@ description: Use when building, flashing, provisioning or OTA-updating the ESP32
 The firmware is a Gea app. The `gea` CLI (from `@geastack/cli`) owns the entire ESP-IDF
 project; this repo only declares its contributions in `package.json` under `gea`.
 
+Install the registry packages with `npm ci`. The lockfile includes targets 0.1.83,
+which provides the AMOLED display and runtime-stack fixes, and its compatible
+core/engine packages. Build without local Gea package or compiler path overrides;
+the installed packages are sufficient. If an old CMake cache points to a local
+checkout, preserve that target's build directory outside `.gea/` and let the CLI
+create a fresh one under `.gea/build/`.
+
 ## Commands
 
 | Task                                   | Command                                          |

@@ -23,20 +23,12 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGES="$REPO/node_modules/@geastack"
 BUILD="$REPO/.gea/build/web"
 
-# The script that drives this build ships in @geastack/simulator, so the
-# installed package is what a clone uses and nothing outside the repo has to
-# exist. A checkout beside it is the framework-development case -- editing the
-# driver and this app in one loop -- and GEA_SIMULATOR_DIR names it.
-SIMULATOR="${GEA_SIMULATOR_DIR:-}"
-if [[ -z "$SIMULATOR" ]]; then
-  SIMULATOR="$(node -e "process.stdout.write(require('path').dirname(require.resolve('@geastack/simulator/package.json')))" 2> /dev/null || true)"
-fi
-if [[ -z "$SIMULATOR" ]]; then
-  SIMULATOR="$REPO/../../geastack/simulator"
-fi
+# Use the simulator installed by npm ci, just like the other Gea packages.
+# A neighboring checkout must not silently supply a missing dependency.
+SIMULATOR="$PACKAGES/simulator"
 
 if [[ ! -f "$SIMULATOR/targets/web/build-web.sh" ]]; then
-  echo "No @geastack/simulator at $SIMULATOR; npm install, or set GEA_SIMULATOR_DIR." >&2
+  echo "No @geastack/simulator at $SIMULATOR; run npm ci." >&2
   exit 1
 fi
 if ! command -v emcc > /dev/null 2>&1; then

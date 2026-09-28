@@ -16,7 +16,18 @@ and the rest is fixed upstream.
 1. Run `npm install` (or `npm install <package>@latest` for one of them). It
    rewrites `package-lock.json`; commit that, since it is the record of what
    the firmware was built against.
+   Check the transitive version changes, then run `npm ci` to verify the lockfile
+   installs cleanly. Every package must resolve from the registry into this
+   project's `node_modules`, with no `file:`/`link:` dependencies or symlinks to
+   local Gea checkouts.
 2. Run `npm test`, `npm run check` and `npm run build:firmware`.
+   Clear package-path/compiler overrides (`GEA_TARGETS_ROOT`, `GEA_*_DIR`,
+   `GEA_GEATSC_BIN`, `GEATSC*`) before qualifying the build. Preserve the old
+   target build directory outside `.gea/` and start a fresh cache under the
+   normal `.gea/build/` path when switching from a local target checkout. Then
+   inspect the generated CMake cache and compile inputs for paths outside the
+   project, its installed packages and the ESP-IDF/toolchain. Run the web/WASM
+   build too when shared Gea dependencies change.
 3. Diff the generated `.gea/build/<target>/app-builds/<app>/sdkconfig` against
    `src/native/sdkconfig.defaults`. The CLI decides some settings itself and a
    new version can decide them differently; the generated file is sticky, so a

@@ -385,6 +385,12 @@ extern "C" void coyopedal_pedal_dsp_set_output_gain(const float gain) {
     g_engine.set_output_gain(gain);
 }
 
+extern "C" void coyopedal_pedal_dsp_set_controls(const float input_gain, const float output_gain,
+                                                 const float bass_db, const float mid_db,
+                                                 const float treble_db) {
+    g_engine.set_controls(input_gain, output_gain, bass_db, mid_db, treble_db);
+}
+
 extern "C" void coyopedal_pedal_dsp_set_tone(const float bass_db, const float mid_db,
                                              const float treble_db) {
     g_engine.set_tone(bass_db, mid_db, treble_db);
