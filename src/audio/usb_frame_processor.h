@@ -14,9 +14,16 @@ extern "C" {
 // changed, so preset and model replacement cannot race the DSP stages. Calls may
 // be nested.
 bool coyopedal_pedal_dsp_begin_update(void);
+// Short parameter edits share the block-boundary pause, but preserve USB audio
+// queued during the edit. Do not use this for model loads or storage access.
+bool coyopedal_pedal_dsp_begin_control_update(void);
 void coyopedal_pedal_dsp_end_update(void);
 
 void coyopedal_pedal_dsp_set_input_gain(float gain);
+void coyopedal_pedal_dsp_profile_start(void);
+void coyopedal_pedal_dsp_profile_read(uint32_t* cycles, uint32_t* wide_mixin, uint32_t* blocks);
+void coyopedal_pedal_dsp_set_controls(float input_gain, float output_gain, float bass_db,
+                                      float mid_db, float treble_db);
 void coyopedal_pedal_dsp_set_output_gain(float gain);
 
 // The amp's tone stack, in decibels: bass, mid, treble, each plus or minus twelve. It

@@ -4,6 +4,13 @@
 
 #pragma once
 
+// Set to 1 in gea.defines for a diagnostic build (all translation units).
+// Keep disabled in production: the extra IRAM/state changes the tight SRAM
+// placement enough to prevent display DMA allocation on this board.
+#ifndef COYOPEDAL_S3_LAYER_PROFILE
+#define COYOPEDAL_S3_LAYER_PROFILE 0
+#endif
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -93,6 +100,9 @@ class A2FullS3Native {
         alignas(16) std::int16_t input_q[kMaxStagedFrames]{};
         std::uint32_t input_peak = 0;
         std::size_t frames = 0;
+#if COYOPEDAL_S3_LAYER_PROFILE
+        bool profile_sample = false;
+#endif
     };
 
     explicit A2FullS3Native(bool external_workspace = false) noexcept
@@ -105,9 +115,16 @@ class A2FullS3Native {
                    std::size_t error_message_capacity) noexcept;
     void reset() noexcept;
     void process(float* samples, std::size_t frame_count) noexcept;
-    void begin_block(const float* samples, std::size_t frames, BlockScratch& scratch) noexcept;
+    void begin_block(const float* samples, std::size_t frames, BlockScratch& scratch,
+                     float input_gain = 1.0F) noexcept;
     void process_layers(BlockScratch& scratch, std::size_t first, std::size_t last) noexcept;
-    void finish_block(BlockScratch& scratch, float* output) noexcept;
+    void finish_block(BlockScratch& scratch, float* output, float output_gain = 1.0F) noexcept;
+
+    // Diagnostic sampling: caller must stop both stages before start/read.
+    // Cycles are totals across one in 64 blocks; index 23 is the head.
+    void profile_start() noexcept;
+    void profile_read(std::uint32_t* cycles, std::uint32_t* wide_mixin,
+                      std::uint32_t& blocks) noexcept;
 
     [[nodiscard]] bool loaded() const noexcept {
         return loaded_;
@@ -170,7 +187,7 @@ class A2FullS3Native {
     [[nodiscard]] std::int16_t* residual_low_for_layer(std::size_t index) const noexcept;
 
     std::array<Layer, kLayerCount> layers_{};
-    std::array<std::int16_t, kChannels> rechannel_q15_{};
+    alignas(16) std::array<std::int16_t, kChannels> rechannel_q15_{};
     int rechannel_shift_ = 0;
     alignas(16) std::array<std::int16_t, kHeadKernel * kChannels> head_q15_{};
     int head_weight_shift_ = 0;
@@ -178,6 +195,7 @@ class A2FullS3Native {
     float head_scale_ = 0.0F;
     float stream_scale_ = 1.0F;
     float head_grid_ = 1.0F;
+    float head_dot_scale_ = 1.0F;
     alignas(
         16) std::array<std::array<std::int16_t, kChannels>, 2 * kHeadKernel> head_history_q15_{};
     std::size_t head_position_ = 0;
@@ -207,6 +225,13 @@ class A2FullS3Native {
     std::size_t residual_low_stage_b_offset_ = 0;
     std::uint32_t overflows_ = 0;
     bool loaded_ = false;
+#if COYOPEDAL_S3_LAYER_PROFILE
+    bool profile_enabled_ = false;
+    std::uint32_t profile_phase_ = 0;
+    std::uint32_t profile_blocks_ = 0;
+    std::array<std::uint32_t, kLayerCount + 1> profile_cycles_{};
+    std::array<std::uint32_t, kLayerCount> profile_wide_mixin_{};
+#endif
 };
 
 } // namespace nam_bfp

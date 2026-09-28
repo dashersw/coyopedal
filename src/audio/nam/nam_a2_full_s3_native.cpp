@@ -1570,6 +1570,11 @@ bool A2FullS3Native::load_namb(const std::uint8_t* const data, const std::size_t
     head_weight_shift_ = std::clamp(
         static_cast<int>(std::floor(std::log2(4095.0F / std::max(head_weight_peak, 1.0e-20F)))), 0,
         15);
+#if defined(ESP_PLATFORM)
+    head_dot_scale_ = std::ldexp(head_grid_, 15 - head_weight_shift_ + 14);
+#else
+    head_dot_scale_ = std::ldexp(head_grid_, 15 - head_weight_shift_);
+#endif
     const float head_weight_multiplier = std::ldexp(1.0F, head_weight_shift_);
     for (std::size_t at = 0; at < model->head.size(); ++at) {
         head_q15_[at] = static_cast<std::int16_t>(std::clamp<long>(
@@ -2046,25 +2051,30 @@ void A2FullS3Native::reset_tuning_steady(BlockScratch& scratch) noexcept {
 
 COYOPEDAL_S3_BLOCK_HOT
 void A2FullS3Native::begin_block(const float* const samples, const std::size_t frames,
-                                 BlockScratch& scratch) noexcept {
+                                 BlockScratch& scratch, const float input_gain) noexcept {
     scratch.frames = std::min(frames, kMaxStagedFrames);
+#if COYOPEDAL_S3_LAYER_PROFILE
+    scratch.profile_sample = profile_enabled_ && (profile_phase_++ & 63U) == 0U;
+    if (scratch.profile_sample)
+        ++profile_blocks_;
+#endif
 #if defined(ESP_PLATFORM)
     extern std::uint32_t s3_a2full_native_input_q15(
-        const float* input, std::int16_t* output,
-        std::int32_t frames) noexcept asm("s3_a2full_native_input_q15");
+        const float* input, std::int16_t* output, std::int32_t frames,
+        float gain) noexcept asm("s3_a2full_native_input_q15");
     extern void s3_a2full_native_rechannel8(
         const std::int16_t* input, const std::int16_t* weights, std::int32_t shift,
         std::int32_t* stream, std::int32_t* head_sum,
         std::int32_t frames) noexcept asm("s3_a2full_native_rechannel8");
-    scratch.input_peak = s3_a2full_native_input_q15(samples, scratch.input_q,
-                                                    static_cast<std::int32_t>(scratch.frames));
+    scratch.input_peak = s3_a2full_native_input_q15(
+        samples, scratch.input_q, static_cast<std::int32_t>(scratch.frames), input_gain);
     s3_a2full_native_rechannel8(scratch.input_q, rechannel_q15_.data(), rechannel_shift_,
                                 scratch.stream[0], scratch.head_sum[0],
                                 static_cast<std::int32_t>(scratch.frames));
 #else
     scratch.input_peak = 0U;
     for (std::size_t frame = 0; frame < scratch.frames; ++frame) {
-        const float condition = samples[frame];
+        const float condition = samples[frame] * input_gain;
         scratch.input_q[frame] = static_cast<std::int16_t>(
             std::clamp<long>(std::lrintf(condition * 32768.0F), INT16_MIN, INT16_MAX));
         const std::int32_t input_q = scratch.input_q[frame];
@@ -2171,6 +2181,10 @@ struct S3NativeFusedLayer8Args {
 static_assert(sizeof(S3NativeFusedLayer8Args) == 120);
 
 using S3NativeFusedLayer8Fn = void (*)(const S3NativeFusedLayer8Args*) noexcept;
+extern "C" void s3_a2full_mirror_rows(std::int16_t* high_destination,
+                                      const std::int16_t* high_source,
+                                      std::uint8_t* low_destination, const std::uint8_t* low_source,
+                                      std::uint32_t frames) noexcept;
 extern "C" void s3_a2full_fused_layer8_l0_s8(const S3NativeFusedLayer8Args* args) noexcept;
 extern "C" void s3_a2full_fused_layer8_low_s8(const S3NativeFusedLayer8Args* args) noexcept;
 extern "C" void
@@ -2604,40 +2618,26 @@ void A2FullS3Native::run_layer(BlockScratch& scratch, const std::size_t index,
         fused_function(&fused_args);
 
         if (next_layer != nullptr) {
-            std::int16_t* const next_high_ring = next_high_base - next_position * kChannels;
+            // Every capacity is history length + 64, so its 64-frame mirror
+            // never covers the whole ring. A block needs at most one copy:
+            // wrapped output back to the primary prefix, or prefix to mirror.
             const std::size_t end = next_position + count;
-            if (end > next_layer->capacity) {
-                const std::size_t wrapped = end - next_layer->capacity;
-                const std::size_t tail = count - wrapped;
-                // The fused call wrote the wrapped prefix into the mirror.
-                // Move it into the primary ring before the next tile.
-                std::memcpy(next_high_ring, next_high_ring + next_layer->capacity * kChannels,
-                            wrapped * kChannels * sizeof(std::int16_t));
-                if (next_layer->mirror == next_layer->capacity) {
-                    std::memcpy(next_high_ring + (next_layer->capacity + next_position) * kChannels,
-                                next_high_ring + next_position * kChannels,
-                                tail * kChannels * sizeof(std::int16_t));
-                }
-                if (next_low_base != nullptr) {
-                    std::uint8_t* const next_low_ring = next_low_base - next_position * kChannels;
-                    std::memcpy(next_low_ring, next_low_ring + next_layer->capacity * kChannels,
-                                wrapped * kChannels);
-                    if (next_layer->mirror == next_layer->capacity) {
-                        std::memcpy(next_low_ring +
-                                        (next_layer->capacity + next_position) * kChannels,
-                                    next_low_ring + next_position * kChannels, tail * kChannels);
-                    }
-                }
-            } else if (next_position < next_layer->mirror) {
-                const std::size_t mirrored = std::min(count, next_layer->mirror - next_position);
-                std::memcpy(next_high_ring + (next_layer->capacity + next_position) * kChannels,
-                            next_high_ring + next_position * kChannels,
-                            mirrored * kChannels * sizeof(std::int16_t));
-                if (next_low_base != nullptr) {
-                    std::uint8_t* const next_low_ring = next_low_base - next_position * kChannels;
-                    std::memcpy(next_low_ring + (next_layer->capacity + next_position) * kChannels,
-                                next_low_ring + next_position * kChannels, mirrored * kChannels);
-                }
+            const bool wrapped = end > next_layer->capacity;
+            const std::size_t rows =
+                wrapped ? end - next_layer->capacity
+                        : (next_position < next_layer->mirror
+                               ? std::min(count, next_layer->mirror - next_position)
+                               : 0U);
+            if (rows != 0U) {
+                auto* const high = next_high_base - next_position * kChannels;
+                auto* const low =
+                    next_low_base != nullptr ? next_low_base - next_position * kChannels : nullptr;
+                const std::size_t source = wrapped ? next_layer->capacity : next_position;
+                const std::size_t destination = wrapped ? 0U : next_layer->capacity + next_position;
+                s3_a2full_mirror_rows(high + destination * kChannels, high + source * kChannels,
+                                      low != nullptr ? low + destination * kChannels : nullptr,
+                                      low != nullptr ? low + source * kChannels : nullptr,
+                                      static_cast<std::uint32_t>(rows));
             }
         }
 
@@ -2649,6 +2649,32 @@ void A2FullS3Native::run_layer(BlockScratch& scratch, const std::size_t index,
 #endif
 }
 
+void A2FullS3Native::profile_start() noexcept {
+#if COYOPEDAL_S3_LAYER_PROFILE
+    profile_phase_ = 0;
+    profile_blocks_ = 0;
+    profile_cycles_.fill(0);
+    profile_wide_mixin_.fill(0);
+#if defined(ESP_PLATFORM)
+    profile_enabled_ = true;
+#endif
+#endif
+}
+
+void A2FullS3Native::profile_read(std::uint32_t* const cycles, std::uint32_t* const wide_mixin,
+                                  std::uint32_t& blocks) noexcept {
+#if COYOPEDAL_S3_LAYER_PROFILE
+    profile_enabled_ = false;
+    std::copy(profile_cycles_.begin(), profile_cycles_.end(), cycles);
+    std::copy(profile_wide_mixin_.begin(), profile_wide_mixin_.end(), wide_mixin);
+    blocks = profile_blocks_;
+#else
+    std::fill_n(cycles, kLayerCount + 1U, 0U);
+    std::fill_n(wide_mixin, kLayerCount, 0U);
+    blocks = 0U;
+#endif
+}
+
 COYOPEDAL_S3_BLOCK_HOT
 void A2FullS3Native::process_layers(BlockScratch& scratch, const std::size_t first,
                                     const std::size_t last) noexcept {
@@ -2657,6 +2683,20 @@ void A2FullS3Native::process_layers(BlockScratch& scratch, const std::size_t fir
     // segment therefore leaves this layer's ring quantized, and the second
     // segment does not rebuild it.
     bool ring_ready = first != 0U;
+#if defined(ESP_PLATFORM) && COYOPEDAL_S3_LAYER_PROFILE
+    if (scratch.profile_sample) {
+        for (std::size_t index = first; index < end; ++index) {
+            const bool direct_next = index + 1U < kLayerCount;
+            const std::uint32_t start = esp_cpu_get_cycle_count();
+            run_layer(scratch, index, 0U, scratch.frames, ring_ready, direct_next);
+            profile_cycles_[index] += esp_cpu_get_cycle_count() - start;
+            profile_wide_mixin_[index] +=
+                scratch.input_peak > layers_[index].narrow_mixin_input_limit ? 1U : 0U;
+            ring_ready = direct_next;
+        }
+        return;
+    }
+#endif
     for (std::size_t index = first; index < end; ++index) {
         const bool direct_next = index + 1U < kLayerCount;
         run_layer(scratch, index, 0U, scratch.frames, ring_ready, direct_next);
@@ -2665,14 +2705,14 @@ void A2FullS3Native::process_layers(BlockScratch& scratch, const std::size_t fir
 }
 
 COYOPEDAL_S3_BLOCK_HOT
-void A2FullS3Native::finish_block(BlockScratch& scratch, float* const output) noexcept {
-    constexpr int kHeadHistoryShift = 15;
+void A2FullS3Native::finish_block(BlockScratch& scratch, float* const output,
+                                  const float output_gain) noexcept {
     // The head dot product accumulates in eight lanes, each narrowed to S16
     // after this shift.
-    constexpr int kHeadLaneShift = 14;
 #if defined(ESP_PLATFORM)
-    const float head_dot_scale =
-        std::ldexp(head_grid_, kHeadHistoryShift - head_weight_shift_ + kHeadLaneShift);
+#if COYOPEDAL_S3_LAYER_PROFILE
+    const std::uint32_t profile_start = scratch.profile_sample ? esp_cpu_get_cycle_count() : 0U;
+#endif
     // The final layer no longer needs scratch.stream. Reuse its first row span
     // for the 64 lane sums instead of reserving more SRAM.
     std::int32_t* const lane_sums = &scratch.stream[0][0];
@@ -2687,11 +2727,16 @@ void A2FullS3Native::finish_block(BlockScratch& scratch, float* const output) no
     };
     head_position_ = static_cast<std::size_t>(s3_a2full_native_head_block(&args));
     for (std::size_t frame = 0; frame < scratch.frames; ++frame) {
-        const float result = head_bias_ + static_cast<float>(lane_sums[frame]) * head_dot_scale;
-        output[frame] = result * head_scale_;
+        const float result = head_bias_ + static_cast<float>(lane_sums[frame]) * head_dot_scale_;
+        output[frame] = (result * head_scale_) * output_gain;
     }
+#if COYOPEDAL_S3_LAYER_PROFILE
+    if (scratch.profile_sample)
+        profile_cycles_[kLayerCount] += esp_cpu_get_cycle_count() - profile_start;
+#endif
 #else
-    const float head_dot_scale = std::ldexp(head_grid_, kHeadHistoryShift - head_weight_shift_);
+    constexpr int kHeadHistoryShift = 15;
+    constexpr int kHeadLaneShift = 14;
     for (std::size_t frame = 0; frame < scratch.frames; ++frame) {
         for (std::size_t channel = 0; channel < kChannels; ++channel) {
             const std::int32_t value = scratch.head_sum[frame][channel];
@@ -2721,8 +2766,8 @@ void A2FullS3Native::finish_block(BlockScratch& scratch, float* const output) no
                 INT16_MAX);
             dot += narrowed << kHeadLaneShift;
         }
-        const float result = head_bias_ + static_cast<float>(dot) * head_dot_scale;
-        output[frame] = result * head_scale_;
+        const float result = head_bias_ + static_cast<float>(dot) * head_dot_scale_;
+        output[frame] = (result * head_scale_) * output_gain;
         head_position_ = (head_position_ + 1U) % kHeadKernel;
     }
 #endif

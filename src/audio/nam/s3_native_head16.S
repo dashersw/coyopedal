@@ -48,13 +48,12 @@ s3_a2full_native_head_block:
     ee.vsr.32 q2, q0
     ee.vadds.s32 q0, q0, q4
     ee.vadds.s32 q0, q0, q2
-    ssai    15
-    ee.vsr.32 q0, q0
-    ssai    31
+    // Both halves share their sign shift and final quantization shift.
     ee.vsr.32 q2, q1
     ee.vadds.s32 q1, q1, q4
     ee.vadds.s32 q1, q1, q2
     ssai    15
+    ee.vsr.32 q0, q0
     ee.vsr.32 q1, q1
     ee.vmax.s32 q0, q0, q5
     ee.vmax.s32 q1, q1, q5
@@ -106,28 +105,16 @@ s3_a2full_native_head_block:
     ee.vmulas.s16.qacc q7, q3
     movi.n  a9, 14
     ee.srcmb.s16.qacc q2, a9, 0
-    addi    a9, a1, 16
-    ee.vst.128.ip q2, a9, 16
-
-    l16si   a9, a1, 16
-    l16si   a10, a1, 18
-    add.n   a9, a9, a10
-    l16si   a10, a1, 20
-    add.n   a9, a9, a10
-    l16si   a10, a1, 22
-    add.n   a9, a9, a10
-    l16si   a10, a1, 24
-    add.n   a9, a9, a10
-    l16si   a10, a1, 26
-    add.n   a9, a9, a10
-    l16si   a10, a1, 28
-    add.n   a9, a9, a10
-    l16si   a10, a1, 30
-    add.n   a9, a9, a10
-    s32i    a9, a6, 0
-    addi.n  a6, a6, 4
+    // q3 already holds eight 8s for rounding. ACCX reduces all signed lanes
+    // without a stack spill; the exact sum*8 fits in 22 signed bits.
+    ee.zero.accx
+    ee.vmulas.s16.accx q2, q3
     addi.n  a8, a8, 1
     extui   a8, a8, 0, 4
+    rur.accx_0 a9
+    srai    a9, a9, 3
+    s32i    a9, a6, 0
+    addi.n  a6, a6, 4
 .Lhead_block_loop_done:
 .Lhead_block_done:
     mov.n   a2, a8
@@ -140,11 +127,12 @@ s3_a2full_native_head_block:
     .type s3_a2full_native_input_q15, @function
 
 // uint32_t s3_a2full_native_input_q15(const float* input, int16_t* output,
-//                                     int32_t frames);
+//                                     int32_t frames, float gain);
 // Convert a whole block with the LX7 FPU's nearest-integer instruction and
 // return the maximum absolute Q15 magnitude in a2.
 s3_a2full_native_input_q15:
     entry   a1, 32
+    wfr     f2, a5               // input gain, before a5 becomes peak
     movi    a5, 0x47000000          // 32768.0f
     wfr     f1, a5
     movi    a6, -32768
@@ -153,6 +141,7 @@ s3_a2full_native_input_q15:
     beqz    a4, .Linput_q15_done
     loopnez a4, .Linput_q15_loop_done
     lsi     f0, a2, 0
+    mul.s   f0, f0, f2
     mul.s   f0, f0, f1
     round.s a8, f0, 0
     max     a8, a8, a6
@@ -173,84 +162,61 @@ s3_a2full_native_input_q15:
     .global s3_a2full_native_rechannel8
     .type s3_a2full_native_rechannel8, @function
 
-    .macro RECHANNEL_LANE lane
-    l16si   a9, a3, (\lane * 2)
-    mul16s  a9, a9, a8
-    bgez    a9, .Lrechannel_positive\@
-    sub     a9, a10, a9
-    sra     a9, a9
-    neg     a9, a9
-    j       .Lrechannel_store\@
-.Lrechannel_positive\@:
-    add     a9, a9, a10
-    sra     a9, a9
-.Lrechannel_store\@:
-    s32i    a9, a5, (\lane * 4)
-    .endm
-
 // void s3_a2full_native_rechannel8(const int16_t* input,
 //     const int16_t* weights, int32_t shift, int32_t* stream,
 //     int32_t* head_sum, int32_t frames);
+// Reconstruct the exact signed 16x16 products from both VMUL windows. Model
+// preparation restricts shift to 0..15, so adding the rounding half cannot
+// overflow int32. For negative products, half-1 implements ties away from zero.
 s3_a2full_native_rechannel8:
-    entry   a1, 32
-    ee.xorq q0, q0, q0
+    // Keep the rounding scratch outside the caller register-window save area.
+    entry   a1, 48
+    ee.xorq q6, q6, q6
     beqz    a7, .Lrechannel_done
+    ee.vld.128.ip q0, a3, 16
     beqz    a4, .Lrechannel_raw
     addi.n  a11, a4, -1
     movi.n  a10, 1
     ssl     a11
     sll     a10, a10
-    // SSL and SSR share the SAR.  Install the right-shift count only after
-    // constructing the rounding half above.
-    ssr     a4
+    s32i    a10, a1, 16
+    addi    a9, a1, 16
+    ee.vldbc.32.ip q5, a9, 0
     loopnez a7, .Lrechannel_loop_done
-    l16si   a8, a2, 0
-    RECHANNEL_LANE 0
-    RECHANNEL_LANE 1
-    RECHANNEL_LANE 2
-    RECHANNEL_LANE 3
-    RECHANNEL_LANE 4
-    RECHANNEL_LANE 5
-    RECHANNEL_LANE 6
-    RECHANNEL_LANE 7
-    ee.vst.128.ip q0, a6, 16
-    ee.vst.128.ip q0, a6, 16
-    addi.n  a2, a2, 2
-    addi    a5, a5, 32
+    ee.vldbc.16.ip q1, a2, 2
+    ssai    0
+    ee.vmul.s16 q2, q0, q1
+    ssai    16
+    ee.vmul.s16 q3, q0, q1
+    ee.vzip.16 q2, q3
+    ssai    31
+    ee.vsr.32 q4, q2
+    ee.vsr.32 q7, q3
+    ee.vadds.s32 q2, q2, q5
+    ee.vadds.s32 q3, q3, q5
+    ee.vadds.s32 q2, q2, q4
+    ee.vadds.s32 q3, q3, q7
+    ssr     a4
+    ee.vsr.32 q2, q2
+    ee.vsr.32 q3, q3
+    ee.vst.128.ip q2, a5, 16
+    ee.vst.128.ip q3, a5, 16
+    ee.vst.128.ip q6, a6, 16
+    ee.vst.128.ip q6, a6, 16
 .Lrechannel_loop_done:
     retw
-
 .Lrechannel_raw:
     loopnez a7, .Lrechannel_raw_done
-    l16si   a8, a2, 0
-    l16si   a9, a3, 0
-    mul16s  a9, a9, a8
-    s32i    a9, a5, 0
-    l16si   a9, a3, 2
-    mul16s  a9, a9, a8
-    s32i    a9, a5, 4
-    l16si   a9, a3, 4
-    mul16s  a9, a9, a8
-    s32i    a9, a5, 8
-    l16si   a9, a3, 6
-    mul16s  a9, a9, a8
-    s32i    a9, a5, 12
-    l16si   a9, a3, 8
-    mul16s  a9, a9, a8
-    s32i    a9, a5, 16
-    l16si   a9, a3, 10
-    mul16s  a9, a9, a8
-    s32i    a9, a5, 20
-    l16si   a9, a3, 12
-    mul16s  a9, a9, a8
-    s32i    a9, a5, 24
-    l16si   a9, a3, 14
-    mul16s  a9, a9, a8
-    s32i    a9, a5, 28
-    ee.vst.128.ip q0, a6, 16
-    ee.vst.128.ip q0, a6, 16
-    addi.n  a2, a2, 2
-    addi    a5, a5, 32
+    ee.vldbc.16.ip q1, a2, 2
+    ssai    0
+    ee.vmul.s16 q2, q0, q1
+    ssai    16
+    ee.vmul.s16 q3, q0, q1
+    ee.vzip.16 q2, q3
+    ee.vst.128.ip q2, a5, 16
+    ee.vst.128.ip q3, a5, 16
+    ee.vst.128.ip q6, a6, 16
+    ee.vst.128.ip q6, a6, 16
 .Lrechannel_raw_done:
 .Lrechannel_done:
     retw

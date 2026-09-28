@@ -88,6 +88,9 @@ bool usb_audio_host_installed();
 // Pauses the DSP pipeline at a block boundary. Calls nest; returns false if the
 // in-flight blocks did not drain in time.
 bool usb_audio_begin_update();
+// For bounded parameter edits only: drain DSP blocks while preserving USB
+// buffering. Nesting with a full update retains the full update's mute policy.
+bool usb_audio_begin_control_update();
 void usb_audio_end_update();
 // The same pause, also holding the model mutex, for replacing the profile.
 // Fails immediately if another model update is in progress.

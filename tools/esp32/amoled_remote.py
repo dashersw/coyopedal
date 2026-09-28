@@ -373,6 +373,7 @@ def effects_profile(
         "device_error": profile.get("error"),
         "preset": profile.get("preset"),
         "model": profile.get("model"),
+        "layer_sample_stride": profile.get("layer_sample_stride"),
         "layer_blocks": profile.get("layer_blocks"),
         "layer_cycles": profile.get("layer_cycles"),
         "wide_mixin_blocks": profile.get("wide_mixin_blocks"),

@@ -279,7 +279,6 @@
     // a3=stream, a5=bias, a6=base QACC shift; stack+136=extra narrow shift.
     .macro STREAM_ADD_NARROWED_QACC_BIAS
     l32i    a7, a1, 136
-    add     a6, a6, a7
     beqz    a6, .Lnarrow_round_done\@
     addi    a8, a1, 320
     ee.vldbc.32.ip q0, a8, 0
@@ -375,8 +374,10 @@
     add     \input_ptr, \input_ptr, a6
     .endm
 
-    .macro DOT_W16 input_ptr, weight_ptr
+    .macro DOT_W16 input_ptr, weight_ptr, live=0
+    .if !\live
     ee.vld.128.ip q0, \input_ptr, 16
+    .endif
     ee.vsmulas.s16.qacc.ld.incp q1, \weight_ptr, q1, q0, 0
     ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q0, 1
     ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q0, 2
@@ -387,13 +388,28 @@
     ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q0, 7
     .endm
 
-    // Load one eight-byte low-limb ring row, sign-extend it to eight S16
-    // lanes, then use the exact S16 QACC layout. S8 QACC has sixteen 20-bit
+    // Load one eight-byte low-limb row and zero-extend it to eight S16
+    // lanes. Ring quantization and activation splitting both mask with 127,
+    // so every low limb is nonnegative; no sign comparison is needed.
+    // Use the exact S16 QACC layout. S8 QACC has sixteen 20-bit
     // lanes on LX7 and therefore cannot represent eight pairwise dot sums.
-    .macro DOT_W16_S8_INPUT input_ptr, weight_ptr, advance=0
+    .macro DOT_W16_S8_INPUT input_ptr, weight_ptr, advance=0, live=0
+    .if \live
+    // The activation low limb is already masked to 0..127 in q5. Widen
+    // it in place, keeping q0 only as the zero-extension source.
+    ee.xorq q0, q0, q0
+    ee.vzip.8 q5, q0
+    ee.vsmulas.s16.qacc.ld.incp q1, \weight_ptr, q1, q5, 0
+    ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q5, 1
+    ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q5, 2
+    ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q5, 3
+    ee.vsmulas.s16.qacc.ld.incp q1, \weight_ptr, q1, q5, 4
+    ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q5, 5
+    ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q5, 6
+    ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q5, 7
+    .else
     ee.vld.l.64.ip q0, \input_ptr, 8
     ee.xorq q5, q5, q5
-    ee.vcmp.lt.s8 q5, q0, q5
     ee.vzip.8 q0, q5
     ee.vsmulas.s16.qacc.ld.incp q1, \weight_ptr, q1, q0, 0
     ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q0, 1
@@ -403,6 +419,7 @@
     ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q0, 5
     ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q0, 6
     ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q0, 7
+    .endif
     .if \advance
     add     \input_ptr, \input_ptr, a6
     .endif
@@ -588,12 +605,10 @@
     .if \residualmode == 4
     // The high-narrow layers only need the high residual limb. Emit it first,
     // then let head accumulation consume q0/q1 directly.
-    addi    a8, a1, 240
     ssai    7
     ee.vsr.32 q2, q0
     ee.vsr.32 q3, q1
     ee.vunzip.16 q2, q3
-    ee.vst.128.ip q2, a8, 16
     l32i    a13, a1, 88
     wsr     a13, sar
     ee.vsl.32 q0, q0
@@ -633,20 +648,18 @@
     .endif
 
     .if \residualmode != 0
-    addi    a8, a1, 240
-    addi    a9, a1, 256
     ssai    7
     ee.vsr.32 q2, q0
     ee.vsr.32 q3, q1
     ee.vunzip.16 q2, q3
-    ee.vst.128.ip q2, a8, 16
     .if \residualmode == 5
     ee.vunzip.16 q0, q1
     ee.vunzip.8 q0, q1
     // q6 is unused by the combined high+low residual path, so the mask loaded
     // in the tile prologue remains live for both consumers in every frame.
-    ee.andq q0, q0, q6
-    ee.vst.l.64.ip q0, a9, 8
+    // q5 survives the high residual dot (which uses q0..q4). Keep the
+    // low limb here until the following low dot instead of spilling it.
+    ee.andq q5, q0, q6
     .endif
     .endif
     .endif
@@ -795,7 +808,7 @@
 
     // Split the updated stream into the next layer's high and S8 low rings.
     // Residual accumulation leaves the stream live in q0/q1.
-    .macro QUANTIZE_NEXT_LANES_LIVE masklive=0
+    .macro QUANTIZE_NEXT_LANES_LIVE masklive=0, liveptr=0
     // Shift four signed stream lanes at once.  EE.VSR.32 is an arithmetic
     // per-lane shift and therefore matches scalar SRA exactly.  There is no
     // A22 clamp: the calibrated grids keep the stream inside the ring range.
@@ -809,8 +822,12 @@
     ee.vsr.32 q3, q0
     ee.vsr.32 q4, q1
     ee.vunzip.16 q3, q4
+    .if \liveptr
+    ee.vst.128.ip q3, a2, 16
+    .else
     ee.vst.128.ip q3, a3, 16
     s32i    a3, a1, 116
+    .endif
 
     // Low limb: collect the low byte of each int32 and clear bit 7, matching
     // scalar extui(value, 0, 7), then store all eight lanes at once.
@@ -832,33 +849,40 @@
     // limb boundary and retain the low 16 bits. VUNZIP.16 collects the even
     // halfwords (the low half of each shifted int32) from both vectors into
     // one packed eight-lane vector. There is deliberately no A22 clamp here.
-    .macro QUANTIZE_NEXT_HIGH_ONLY_LANES_LIVE
+    .macro QUANTIZE_NEXT_HIGH_ONLY_LANES_LIVE liveptr=0
     ee.vsr.32 q0, q0
     ee.vsr.32 q1, q1
     ee.vunzip.16 q0, q1
+    .if \liveptr
+    ee.vst.128.ip q0, a2, 16
+    .else
     ee.vst.128.ip q0, a3, 16
     s32i    a3, a1, 116
+    .endif
     .endm
 
     // Layers 0..10 always feed a split high+low ring, so both pointers are
     // guaranteed here.
-    .macro QUANTIZE_NEXT_LIVE_BOTH masklive=0
+    .macro QUANTIZE_NEXT_LIVE_BOTH masklive=0, liveptr=0
+    .if !\liveptr
     l32i    a3, a1, 116
+    .endif
     l32i    a4, a1, 120
     l32i    a5, a1, 124
     ssr     a5
-    QUANTIZE_NEXT_LANES_LIVE \masklive
+    QUANTIZE_NEXT_LANES_LIVE \masklive, \liveptr
     .endm
 
     // Layers 11..21 can only feed another high-only ring. The caller only
     // selects this kernel when the destination is present, so no per-frame
     // null test is needed.
-    .macro QUANTIZE_NEXT_LIVE_HIGH_ONLY
+    .macro QUANTIZE_NEXT_LIVE_HIGH_ONLY liveptr=0
+    .if !\liveptr
     l32i    a3, a1, 116
+    .endif
     l32i    a5, a1, 124
-    addi.n  a5, a5, 7
     ssr     a5
-    QUANTIZE_NEXT_HIGH_ONLY_LANES_LIVE
+    QUANTIZE_NEXT_HIGH_ONLY_LANES_LIVE \liveptr
     .endm
 
     // One eight-frame layer call.
@@ -968,6 +992,8 @@
     // model-derived S16 safety shift. Cache the half-LSB for that total.
     l32i    a10, a14, 116
     add     a13, a13, a10
+    // Cache the total residual extraction shift for every frame.
+    s32i    a13, a1, 104
     .endif
     bltz    a13, .Lround_high_cached\@
     beqz    a13, .Lround_high_cached\@
@@ -1035,6 +1061,10 @@
     .endif
     .if \nextmode != 0
     l32i    a13, a14, 104
+    .if \nextmode == 2
+    // The high-only ring consumes this same shift in every frame.
+    addi.n  a13, a13, 7
+    .endif
     s32i    a13, a1, 124
     .endif
     .if \residualmode == 4
@@ -1102,6 +1132,9 @@
     // extraction. Preserve its advancing cursor through both QACC unpacks.
     l32i    a14, a1, 68
     .endif
+    .if \rational != 4 && \nextmode != 0
+    l32i    a2, a1, 116
+    .endif
     neg     a15, a15
     // GAS pads .align with zero bytes.  Keep those bytes out of executable
     // fall-through when a different link layout moves this prologue off the
@@ -1124,7 +1157,13 @@
     .endif
 
     .if \residualmode != 0
+    .if \rational == 4
     addi    a2, a1, 240
+    .else
+    // Rational activation leaves its high limb live in q2. Move it before
+    // PRIME reuses q2, avoiding a stack store and subsequent vector load.
+    ee.orq q0, q2, q2
+    .endif
     l32i    a4, a1, 92
     .if \residualmode == 4
     // The narrowed path consumes these pointers and the shift directly.
@@ -1137,16 +1176,15 @@
     .endif
     ee.zero.qacc
     PRIME_W16 a4
-    DOT_W16 a2, a4
+    DOT_W16 a2, a4, (\rational != 4)
     .if \residualmode == 5
     // Layers 1..11 use residual_low_shift = residual_high_shift - 2.
     // Their low table is pre-scaled by four at model load, so both limbs can
     // share this QACC and one final round/unpack instead of serializing QACC
     // twice per frame.
-    addi    a2, a1, 256
     l32i    a4, a1, 96
     PRIME_W16 a4
-    DOT_W16_S8_INPUT a2, a4
+    DOT_W16_S8_INPUT a3, a4, 0, 1
     QACC_SHIFT_TO_I32_VECTORS 104, 0, 1, (\rational == 1 && !\convguarded)
     STREAM_ADD_LIVE_BIAS
     .elseif \residualmode == 4
@@ -1167,9 +1205,9 @@
     STREAM_ADD_SAVED_HIGH_LIVE_LOW_BIAS
     .endif
     .if \nextmode == 2
-    QUANTIZE_NEXT_LIVE_HIGH_ONLY
+    QUANTIZE_NEXT_LIVE_HIGH_ONLY (\rational != 4)
     .elseif \nextmode == 3
-    QUANTIZE_NEXT_LIVE_BOTH (\residualmode == 5)
+    QUANTIZE_NEXT_LIVE_BOTH (\residualmode == 5), (\rational != 4)
     .endif
     .endif
 
@@ -1211,3 +1249,26 @@
     FUSED_FUNCTION s3_a2full_fused_layer8_high_narrow_wide_mixin_trunc, 0, 3, 4, 2, 0, 1
     FUSED_FUNCTION s3_a2full_fused_layer8_final_wide_mixin_trunc_conv_s16_guarded, 0, 3, 0, 0, 1
     FUSED_FUNCTION s3_a2full_fused_layer8_final_cached_wide_mixin_trunc_conv_s16_guarded, 0, 3, 0, 0, 1, 1
+// Copy whole quantized rows between a history prefix and its mirror. The
+// high rows are 16-byte aligned and low rows are eight-byte aligned.
+    .section .iram1.s3_a2full_mirror_rows, "ax"
+    .align 4
+    .global s3_a2full_mirror_rows
+    .type s3_a2full_mirror_rows, @function
+s3_a2full_mirror_rows:
+    entry a1, 16
+    beqz a4, .Lmirror_high
+    loopnez a6, .Lmirror_both_done
+    ee.vld.128.ip q0, a3, 16
+    ee.vld.l.64.ip q1, a5, 8
+    ee.vst.128.ip q0, a2, 16
+    ee.vst.l.64.ip q1, a4, 8
+.Lmirror_both_done:
+    retw
+.Lmirror_high:
+    loopnez a6, .Lmirror_high_done
+    ee.vld.128.ip q0, a3, 16
+    ee.vst.128.ip q0, a2, 16
+.Lmirror_high_done:
+    retw
+    .size s3_a2full_mirror_rows, .-s3_a2full_mirror_rows

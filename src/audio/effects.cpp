@@ -1,4 +1,6 @@
 #include "audio/effects.h"
+#include "audio/control_mailbox.hpp"
+#include <atomic>
 
 #include <algorithm>
 #include <array>
@@ -187,18 +189,12 @@ constexpr uint8_t kMaximumParams = 5;
 // Every member here is zero-initialised on purpose. A single non-zero default
 // initialiser puts the whole Chain object in .data instead of .bss, which spends
 // flash storing values that are zero. coyopedal_fx_init() sets the real values.
-struct Gate {
+struct GateConfig {
     float open_threshold;
     float close_threshold;
     float release_pole;
     float attack_pole;
     int hold_samples;
-    float envelope;
-    float gain;
-    int hold_remaining;
-    bool open;
-
-    // Fast enough to catch a pick attack without clipping its front edge.
     static constexpr float kAttackPole = 0.9F;
 
     void configure(const int16_t* const values) noexcept {
@@ -211,6 +207,15 @@ struct Gate {
         close_threshold = decibels_to_linear(threshold_db - 6.0F);
         release_pole = pole_from_milliseconds(static_cast<float>(values[1]));
     }
+};
+
+struct Gate : GateConfig {
+    float envelope;
+    float gain;
+    int hold_remaining;
+    bool open;
+
+    // Fast enough to catch a pick attack without clipping its front edge.
 
     void process(float* const samples, const std::size_t count) noexcept {
         // `samples` belongs to the audio pipeline and never aliases this state,
@@ -259,12 +264,24 @@ struct Gate {
 // Compressor
 //--------------------------------------------------------------------+
 
-struct Compressor {
+struct CompressorConfig {
     float threshold_db;
     float slope; // 1 - 1/ratio
     float attack_pole;
     float release_pole;
     float makeup;
+
+    void configure(const int16_t* const values) noexcept {
+        // The Studio VCA, with everything exposed.
+        threshold_db = static_cast<float>(values[0]) * 0.1F;
+        slope = 1.0F - (1.0F / std::max(static_cast<float>(values[1]) * 0.1F, 1.0F));
+        attack_pole = pole_from_milliseconds(static_cast<float>(values[2]));
+        release_pole = pole_from_milliseconds(static_cast<float>(values[3]));
+        makeup = decibels_to_linear(static_cast<float>(values[4]) * 0.1F);
+    }
+};
+
+struct Compressor : CompressorConfig {
     float envelope;
     float gain;
     float gain_step;
@@ -277,15 +294,6 @@ struct Compressor {
     // cost into a sixteenth of one.
     static constexpr int kControlInterval = 16;
     static constexpr float kKneeDb = 6.0F;
-
-    void configure(const int16_t* const values) noexcept {
-        // The Studio VCA, with everything exposed.
-        threshold_db = static_cast<float>(values[0]) * 0.1F;
-        slope = 1.0F - (1.0F / std::max(static_cast<float>(values[1]) * 0.1F, 1.0F));
-        attack_pole = pole_from_milliseconds(static_cast<float>(values[2]));
-        release_pole = pole_from_milliseconds(static_cast<float>(values[3]));
-        makeup = decibels_to_linear(static_cast<float>(values[4]) * 0.1F);
-    }
 
     void process(float* const samples, const std::size_t count) noexcept {
         // Keep the recursive control state in registers for the whole block.
@@ -344,11 +352,46 @@ struct Compressor {
 // Overdrive
 //--------------------------------------------------------------------+
 
-struct Overdrive {
+struct OverdriveConfig {
     float drive;
     float blend;
     float level;
     float tone_pole;
+    std::array<float, 2> knee;
+    std::array<float, 2> knee_inverse;
+    std::array<float, 2> cubic_inverse_square;
+    std::array<float, 2> cubic_saturation;
+    float highpass_pole;
+
+    void configure(const int16_t* const values) noexcept {
+        // The Klon, where the clean path is the point. Corner of the pre-clipper highpass, in
+        // hertz.
+        const float highpass_hz = 35.0F;
+        knee = {1.0F, 0.7F};
+        knee_inverse = {1.0F / knee[0], 1.0F / knee[1]};
+        cubic_inverse_square = {
+            knee_inverse[0] * knee_inverse[0],
+            knee_inverse[1] * knee_inverse[1],
+        };
+        cubic_saturation = {
+            (2.0F / 3.0F) * knee[0],
+            (2.0F / 3.0F) * knee[1],
+        };
+
+        drive = decibels_to_linear(static_cast<float>(values[0]) * 0.1F);
+        // Drive moves gain and balance together, as the original does - at the
+        // bottom you hear the clean path, at the top the clipped one.
+        blend = std::clamp(static_cast<float>(values[0]) / 400.0F, 0.0F, 1.0F);
+        level = decibels_to_linear(static_cast<float>(values[2]) * 0.1F);
+        const float tone_omega =
+            2.0F * 3.14159265F * static_cast<float>(values[1]) * kInverseSampleRate;
+        tone_pole = std::clamp(1.0F - std::exp(-tone_omega), 0.01F, 1.0F);
+        const float hp_omega = 2.0F * 3.14159265F * highpass_hz * kInverseSampleRate;
+        highpass_pole = std::clamp(1.0F - std::exp(-hp_omega), 0.0001F, 1.0F);
+    }
+};
+
+struct Overdrive : OverdriveConfig {
     float tone_state;
     float highpass_state;
     float previous_input;
@@ -375,10 +418,6 @@ struct Overdrive {
     // Index zero is positive, one is negative. Reading the IEEE-754 sign bit
     // selects the coefficient directly; a ternary would emit a float compare and
     // branch at every shaper evaluation on LX7.
-    std::array<float, 2> knee;
-    std::array<float, 2> knee_inverse;
-    std::array<float, 2> cubic_inverse_square;
-    std::array<float, 2> cubic_saturation;
 
     [[gnu::always_inline]] static inline std::size_t sign_index(const float x) noexcept {
         return std::bit_cast<std::uint32_t>(x) >> 31U;
@@ -411,7 +450,6 @@ struct Overdrive {
         return edge + (2.0F / 3.0F) * knee * (std::fabs(x) - knee);
     }
 
-    float highpass_pole;
     [[gnu::always_inline]] static inline float
     divide_antiderivative(const float numerator, const float denominator) noexcept {
 #if defined(__XTENSA__)
@@ -469,33 +507,6 @@ struct Overdrive {
         return divide_antiderivative(antiderivative(input) - antiderivative(previous), difference);
     }
 
-    void configure(const int16_t* const values) noexcept {
-        // The Klon, where the clean path is the point. Corner of the pre-clipper highpass, in
-        // hertz.
-        const float highpass_hz = 35.0F;
-        knee = {1.0F, 0.7F};
-        knee_inverse = {1.0F / knee[0], 1.0F / knee[1]};
-        cubic_inverse_square = {
-            knee_inverse[0] * knee_inverse[0],
-            knee_inverse[1] * knee_inverse[1],
-        };
-        cubic_saturation = {
-            (2.0F / 3.0F) * knee[0],
-            (2.0F / 3.0F) * knee[1],
-        };
-
-        drive = decibels_to_linear(static_cast<float>(values[0]) * 0.1F);
-        // Drive moves gain and balance together, as the original does - at the
-        // bottom you hear the clean path, at the top the clipped one.
-        blend = std::clamp(static_cast<float>(values[0]) / 400.0F, 0.0F, 1.0F);
-        level = decibels_to_linear(static_cast<float>(values[2]) * 0.1F);
-        const float tone_omega =
-            2.0F * 3.14159265F * static_cast<float>(values[1]) * kInverseSampleRate;
-        tone_pole = std::clamp(1.0F - std::exp(-tone_omega), 0.01F, 1.0F);
-        const float hp_omega = 2.0F * 3.14159265F * highpass_hz * kInverseSampleRate;
-        highpass_pole = std::clamp(1.0F - std::exp(-hp_omega), 0.0001F, 1.0F);
-    }
-
 #if defined(__XTENSA__)
     [[gnu::section(".iram1"), gnu::noinline]]
 #endif
@@ -548,12 +559,7 @@ struct Overdrive {
 // IRAM and DRAM share the same SRAM on the ESP32-S3, but a bypass or preset
 // change then re-fetches the newly selected loops from flash while audio runs,
 // which is audible and can hang the board.
-struct CompactReverb {
-    struct WetPair {
-        float left;
-        float right;
-    };
-
+struct ReverbConfig {
     static constexpr std::size_t kLineCount = 8;
     static constexpr float kTankRate = kSampleRate * 0.5F;
     static constexpr float kQ15Scale = 1.0F / 32768.0F;
@@ -577,43 +583,11 @@ struct CompactReverb {
     };
     static constexpr float kDecimatorCentre = 0.4500983007F;
 
-    std::array<int16_t*, kLineCount> lines{};
-    // Target-owned, like the tank lines. One write and one read per sample at
-    // strictly increasing addresses: of everything the reverb touches this is
-    // the kindest to the PSRAM cache, so it is the first thing to give up
-    // internal SRAM and the last thing worth moving back.
-    float* predelay{};
-    std::array<float, kInputAllpassOne> input_allpass_one{};
-    std::array<float, kInputAllpassTwo> input_allpass_two{};
-    std::array<float, kInputAllpassThree> input_allpass_three{};
-    std::array<float, kInputAllpassFour> input_allpass_four{};
-    // Mirror the 16-sample FIR history once. The active window is then
-    // contiguous and every tap has a fixed negative offset from `newest`,
-    // avoiding thirteen modulo/address sequences in the full-rate hot loop.
-    std::array<float, 32> decimator{};
-    std::array<std::size_t, kLineCount> write{};
     std::array<std::size_t, kLineCount> length{};
-    // The tank's integer delays advance in lockstep with their writes. Keep
-    // their read cursors moving too instead of rebuilding
-    // write + maximum - delay, plus its wrap branch, for every tank tick.
-    std::array<std::size_t, kLineCount> tank_delay_read{};
-    // Tap positions and the two modulated base delays only change when a
-    // preset is configured. Keeping them here avoids rebuilding the same four
-    // integer ratios and two int-to-float values at every 24 kHz tank tick.
     std::array<std::size_t, 4> tank_tap_offset{};
-    // Next sample to read from each output-tap line. Keeping the cursor in
-    // read-before-increment form lets the block kernel normalize a wrap between
-    // contiguous chunks instead of paying four wrap branches on a tank tick.
-    std::array<std::size_t, 4> tank_tap_read{};
     float tank_modulated_delay_one{};
     float tank_modulated_delay_two{};
-    std::size_t predelay_write{};
     std::size_t predelay_delay{1};
-    std::size_t input_allpass_one_write{};
-    std::size_t input_allpass_two_write{};
-    std::size_t input_allpass_three_write{};
-    std::size_t input_allpass_four_write{};
-    std::size_t decimator_write{};
     float left_loop_feedback{};
     float right_loop_feedback{};
     float damping_coefficient{0.5F};
@@ -630,6 +604,92 @@ struct CompactReverb {
     float early_output_gain{};
     float wet{};
     float dry{1.0F};
+    bool stereo{true};
+
+    void configure(const int16_t* const values) noexcept {
+        stereo = values[0] == 0;
+        const float mix = static_cast<float>(values[1]) * 0.01F;
+        reverb_mix_gains(mix, dry, wet);
+        length = kLengths;
+        tank_tap_offset = {
+            length[1] / 3U,
+            (length[3] * 2U) / 5U,
+            length[5] / 4U,
+            (length[7] * 3U) / 5U,
+        };
+        tank_modulated_delay_one = static_cast<float>(length[0]);
+        tank_modulated_delay_two = static_cast<float>(length[4]);
+        const float left_loop = static_cast<float>(length[0] + length[1] + length[2] + length[3]);
+        const float right_loop = static_cast<float>(length[4] + length[5] + length[6] + length[7]);
+        const float requested_decay_samples =
+            std::max(static_cast<float>(values[2]), 1.0F) * 0.001F * kTankRate;
+        const float damping = std::clamp(static_cast<float>(values[3]) * 0.01F, 0.0F, 0.98F);
+        const float base_damping = 0.02F + 0.9F * (1.0F - damping);
+        damping_coefficient = std::clamp(base_damping * 1.12F, 0.01F, 0.98F);
+        input_diffusion_one = 0.82F;
+        input_diffusion_two = 0.70F;
+        tank_diffusion_one = -0.84F;
+        tank_diffusion_two = 0.68F;
+        modulation_depth_one = 1.75F;
+        modulation_depth_two = 2.75F;
+        modulation_rate_one = 1.37F;
+        modulation_rate_two = 1.71F;
+        tank_output_gain = 1.00F;
+        tap_output_gain = 2.20F;
+        early_output_gain = 0.65F;
+
+        const float decay_samples = requested_decay_samples * kDecayScale;
+        // The two tanks have different loop times. One gain for both would make
+        // the shorter side decay too quickly and the longer side hang over it.
+        // Loss follows the path that produced each feedback sample, preserving
+        // the requested RT60 on both sides.
+        left_loop_feedback =
+            std::clamp(decibels_to_linear(-60.0F * left_loop / decay_samples), 0.05F, 0.985F);
+        right_loop_feedback =
+            std::clamp(decibels_to_linear(-60.0F * right_loop / decay_samples), 0.05F, 0.985F);
+        predelay_delay = std::clamp<std::size_t>(static_cast<std::size_t>(values[4]) * 48U + 1U, 1U,
+                                                 kPredelay - 1U);
+    }
+};
+
+struct CompactReverb : ReverbConfig {
+    struct WetPair {
+        float left;
+        float right;
+    };
+
+    std::array<int16_t*, kLineCount> lines{};
+    // Target-owned, like the tank lines. One write and one read per sample at
+    // strictly increasing addresses: of everything the reverb touches this is
+    // the kindest to the PSRAM cache, so it is the first thing to give up
+    // internal SRAM and the last thing worth moving back.
+    float* predelay{};
+    std::array<float, kInputAllpassOne> input_allpass_one{};
+    std::array<float, kInputAllpassTwo> input_allpass_two{};
+    std::array<float, kInputAllpassThree> input_allpass_three{};
+    std::array<float, kInputAllpassFour> input_allpass_four{};
+    // Mirror the 16-sample FIR history once. The active window is then
+    // contiguous and every tap has a fixed negative offset from `newest`,
+    // avoiding thirteen modulo/address sequences in the full-rate hot loop.
+    std::array<float, 32> decimator{};
+    std::array<std::size_t, kLineCount> write{};
+    // The tank's integer delays advance in lockstep with their writes. Keep
+    // their read cursors moving too instead of rebuilding
+    // write + maximum - delay, plus its wrap branch, for every tank tick.
+    std::array<std::size_t, kLineCount> tank_delay_read{};
+    // Tap positions and the two modulated base delays only change when a
+    // preset is configured. Keeping them here avoids rebuilding the same four
+    // integer ratios and two int-to-float values at every 24 kHz tank tick.
+    // Next sample to read from each output-tap line. Keeping the cursor in
+    // read-before-increment form lets the block kernel normalize a wrap between
+    // contiguous chunks instead of paying four wrap branches on a tank tick.
+    std::array<std::size_t, 4> tank_tap_read{};
+    std::size_t predelay_write{};
+    std::size_t input_allpass_one_write{};
+    std::size_t input_allpass_two_write{};
+    std::size_t input_allpass_three_write{};
+    std::size_t input_allpass_four_write{};
+    std::size_t decimator_write{};
     float input_highpass{};
     float left_damping{};
     float right_damping{};
@@ -640,7 +700,6 @@ struct CompactReverb {
     float modulation_phase_one{};
     float modulation_phase_two{0.37F};
     bool half_rate_phase{};
-    bool stereo{true};
 
     static std::size_t delay_position(const std::size_t write_position, const std::size_t maximum,
                                       const std::size_t delay) noexcept {
@@ -699,52 +758,6 @@ struct CompactReverb {
         modulation_phase_one = 0.0F;
         modulation_phase_two = 0.37F;
         half_rate_phase = false;
-    }
-
-    void configure(const int16_t* const values) noexcept {
-        stereo = values[0] == 0;
-        const float mix = static_cast<float>(values[1]) * 0.01F;
-        reverb_mix_gains(mix, dry, wet);
-        length = kLengths;
-        tank_tap_offset = {
-            length[1] / 3U,
-            (length[3] * 2U) / 5U,
-            length[5] / 4U,
-            (length[7] * 3U) / 5U,
-        };
-        tank_modulated_delay_one = static_cast<float>(length[0]);
-        tank_modulated_delay_two = static_cast<float>(length[4]);
-        const float left_loop = static_cast<float>(length[0] + length[1] + length[2] + length[3]);
-        const float right_loop = static_cast<float>(length[4] + length[5] + length[6] + length[7]);
-        const float requested_decay_samples =
-            std::max(static_cast<float>(values[2]), 1.0F) * 0.001F * kTankRate;
-        const float damping = std::clamp(static_cast<float>(values[3]) * 0.01F, 0.0F, 0.98F);
-        const float base_damping = 0.02F + 0.9F * (1.0F - damping);
-        damping_coefficient = std::clamp(base_damping * 1.12F, 0.01F, 0.98F);
-        input_diffusion_one = 0.82F;
-        input_diffusion_two = 0.70F;
-        tank_diffusion_one = -0.84F;
-        tank_diffusion_two = 0.68F;
-        modulation_depth_one = 1.75F;
-        modulation_depth_two = 2.75F;
-        modulation_rate_one = 1.37F;
-        modulation_rate_two = 1.71F;
-        tank_output_gain = 1.00F;
-        tap_output_gain = 2.20F;
-        early_output_gain = 0.65F;
-
-        const float decay_samples = requested_decay_samples * kDecayScale;
-        // The two tanks have different loop times. One gain for both would make
-        // the shorter side decay too quickly and the longer side hang over it.
-        // Loss follows the path that produced each feedback sample, preserving
-        // the requested RT60 on both sides.
-        left_loop_feedback =
-            std::clamp(decibels_to_linear(-60.0F * left_loop / decay_samples), 0.05F, 0.985F);
-        right_loop_feedback =
-            std::clamp(decibels_to_linear(-60.0F * right_loop / decay_samples), 0.05F, 0.985F);
-        predelay_delay = std::clamp<std::size_t>(static_cast<std::size_t>(values[4]) * 48U + 1U, 1U,
-                                                 kPredelay - 1U);
-        reset_tank_read_positions();
     }
 
     template <std::size_t Size>
@@ -1281,18 +1294,34 @@ float samples_from_milliseconds(const float milliseconds) noexcept {
     return milliseconds * kSampleRate / 1000.0F;
 }
 
-struct Modulation {
-    // Every member zero-initialised, for the .data/.bss reason above.
-    float* line;
-
-    std::size_t write;
-    float phase;
+struct ModulationConfig {
     float phase_step;
     float depth;
     float wet;
     float dry;
     float centre; // samples
     float sweep;  // samples, peak deviation from centre
+
+    void configure(const int16_t* const values) noexcept {
+        const float rate_hz = static_cast<float>(values[0]) * 0.1F;
+        phase_step = rate_hz * kInverseSampleRate;
+        depth = std::clamp(static_cast<float>(values[1]) * 0.01F, 0.0F, 1.0F);
+        centre = samples_from_milliseconds(static_cast<float>(values[2]));
+        // Deviation scales with the delay, which is what keeps a long, slow
+        // chorus from sounding detuned and a short one from sounding static.
+        sweep = depth * centre * 0.4F;
+        const float mix = std::clamp(static_cast<float>(values[3]) * 0.01F, 0.0F, 1.0F);
+        wet = mix;
+        dry = 1.0F - mix;
+    }
+};
+
+struct Modulation : ModulationConfig {
+    // Every member zero-initialised, for the .data/.bss reason above.
+    float* line;
+
+    std::size_t write;
+    float phase;
 
     void clear() noexcept {
         std::fill(line, line + kModulationSamples, 0.0F);
@@ -1313,19 +1342,6 @@ struct Modulation {
         const std::size_t first = (write_position + kModulationSamples - whole) & kLineMask;
         const std::size_t second = (first - 1U) & kLineMask;
         return delay_line[first] + fraction * (delay_line[second] - delay_line[first]);
-    }
-
-    void configure(const int16_t* const values) noexcept {
-        const float rate_hz = static_cast<float>(values[0]) * 0.1F;
-        phase_step = rate_hz * kInverseSampleRate;
-        depth = std::clamp(static_cast<float>(values[1]) * 0.01F, 0.0F, 1.0F);
-        centre = samples_from_milliseconds(static_cast<float>(values[2]));
-        // Deviation scales with the delay, which is what keeps a long, slow
-        // chorus from sounding detuned and a short one from sounding static.
-        sweep = depth * centre * 0.4F;
-        const float mix = std::clamp(static_cast<float>(values[3]) * 0.01F, 0.0F, 1.0F);
-        wet = mix;
-        dry = 1.0F - mix;
     }
 
 #if defined(__XTENSA__)
@@ -1451,16 +1467,34 @@ struct Modulation {
 // The only block that does not own its memory: two seconds of mono is 384 KB, and the
 // buffer it is given lives in PSRAM. One sequential write and one read per sample,
 // which is what that memory is good at.
-struct Delay {
+struct DelayConfig {
+    float target_samples;
+    float feedback;
+    float wet;
+    float dry;
+
+    void configure(const int16_t* const values, const std::size_t capacity) noexcept {
+        if (capacity == 0U) {
+            return;
+        }
+        // Clamped to the buffer rather than to the control's range: the same firmware
+        // runs with whatever memory it was given, and a TIME longer than the line would
+        // otherwise read the write pointer's own future.
+        const float requested = samples_from_milliseconds(static_cast<float>(values[0]));
+        target_samples = std::min(requested, static_cast<float>(capacity - 4U));
+        feedback = std::clamp(static_cast<float>(values[1]) * 0.01F, 0.0F, 0.95F);
+        const float mix = std::clamp(static_cast<float>(values[2]) * 0.01F, 0.0F, 1.0F);
+        wet = mix;
+        dry = 1.0F - mix;
+    }
+};
+
+struct Delay : DelayConfig {
     float* line;
     std::size_t capacity;
     std::size_t write;
 
     float time_samples;
-    float target_samples;
-    float feedback;
-    float wet;
-    float dry;
 
     bool attach(float* const memory, const std::size_t samples) noexcept {
         // A quarter of a second is the floor. Below that the TIME control could not
@@ -1501,24 +1535,6 @@ struct Delay {
         }
         const std::size_t second = (first == 0U) ? capacity - 1U : first - 1U;
         return line[first] + fraction * (line[second] - line[first]);
-    }
-
-    void configure(const int16_t* const values) noexcept {
-        if (!ready()) {
-            return;
-        }
-        // Clamped to the buffer rather than to the control's range: the same firmware
-        // runs with whatever memory it was given, and a TIME longer than the line would
-        // otherwise read the write pointer's own future.
-        const float requested = samples_from_milliseconds(static_cast<float>(values[0]));
-        target_samples = std::min(requested, static_cast<float>(capacity - 4U));
-        if (time_samples <= 0.0F) {
-            time_samples = target_samples;
-        }
-        feedback = std::clamp(static_cast<float>(values[1]) * 0.01F, 0.0F, 0.95F);
-        const float mix = std::clamp(static_cast<float>(values[2]) * 0.01F, 0.0F, 1.0F);
-        wet = mix;
-        dry = 1.0F - mix;
     }
 
 #if defined(__XTENSA__)
@@ -1609,7 +1625,6 @@ struct Delay {
 
 struct Chain {
     std::array<std::array<int16_t, kMaximumParams>, COYOPEDAL_FX_BLOCK_COUNT> values{};
-    std::array<bool, COYOPEDAL_FX_BLOCK_COUNT> enabled{};
     Gate gate;
     Compressor compressor;
     Overdrive overdrive;
@@ -1627,29 +1642,79 @@ CompactReverb& reverb_state() noexcept {
 
 Chain chain;
 
+using coyopedal::pedal::ControlMailbox;
+ControlMailbox<GateConfig> gate_controls;
+ControlMailbox<CompressorConfig> compressor_controls;
+ControlMailbox<OverdriveConfig> overdrive_controls;
+ControlMailbox<ModulationConfig> modulation_controls;
+ControlMailbox<DelayConfig> delay_controls;
+ControlMailbox<ReverbConfig> reverb_controls;
+std::atomic<unsigned> enabled_mask{};
+
 void apply(const coyopedal_fx_block_t block) noexcept {
     const int16_t* const values = chain.values[block].data();
     switch (block) {
-    case COYOPEDAL_FX_GATE:
-        chain.gate.configure(values);
+    case COYOPEDAL_FX_GATE: {
+        GateConfig config{};
+        config.configure(values);
+        gate_controls.publish(config);
         break;
-    case COYOPEDAL_FX_COMPRESSOR:
-        chain.compressor.configure(values);
+    }
+    case COYOPEDAL_FX_COMPRESSOR: {
+        CompressorConfig config{};
+        config.configure(values);
+        compressor_controls.publish(config);
         break;
-    case COYOPEDAL_FX_OVERDRIVE:
-        chain.overdrive.configure(values);
+    }
+    case COYOPEDAL_FX_OVERDRIVE: {
+        OverdriveConfig config{};
+        config.configure(values);
+        overdrive_controls.publish(config);
         break;
-    case COYOPEDAL_FX_REVERB:
-        reverb_state().configure(values);
+    }
+    case COYOPEDAL_FX_MODULATION: {
+        ModulationConfig config{};
+        config.configure(values);
+        modulation_controls.publish(config);
         break;
-    case COYOPEDAL_FX_MODULATION:
-        chain.modulation.configure(values);
+    }
+    case COYOPEDAL_FX_DELAY: {
+        DelayConfig config{};
+        config.configure(values, chain.delay.capacity);
+        delay_controls.publish(config);
         break;
-    case COYOPEDAL_FX_DELAY:
-        chain.delay.configure(values);
+    }
+    case COYOPEDAL_FX_REVERB: {
+        ReverbConfig config{};
+        config.configure(values);
+        reverb_controls.publish(config);
         break;
+    }
     default:
         break;
+    }
+}
+
+template <typename Config, typename Effect>
+[[gnu::always_inline]] inline void adopt(ControlMailbox<Config>& mailbox, Effect& effect) noexcept {
+    if (const Config* config = mailbox.consume()) {
+        static_cast<Config&>(effect) = *config;
+    }
+}
+
+[[gnu::always_inline]] inline void adopt_reverb() noexcept {
+    if (const ReverbConfig* config = reverb_controls.consume()) {
+        static_cast<ReverbConfig&>(reverb_state()) = *config;
+        reverb_state().reset_tank_read_positions();
+    }
+}
+
+[[gnu::always_inline]] inline void adopt_delay() noexcept {
+    if (const DelayConfig* config = delay_controls.consume()) {
+        static_cast<DelayConfig&>(chain.delay) = *config;
+        if (chain.delay.time_samples <= 0.0F) {
+            chain.delay.time_samples = chain.delay.target_samples;
+        }
     }
 }
 
@@ -1717,19 +1782,20 @@ extern "C" void coyopedal_fx_init(void) {
     chain.overdrive.tone_state = 0.0F;
     chain.overdrive.highpass_state = 0.0F;
     chain.overdrive.previous_input = 0.0F;
-    chain.enabled[COYOPEDAL_FX_GATE] = true;
-    chain.enabled[COYOPEDAL_FX_COMPRESSOR] = false;
-    chain.enabled[COYOPEDAL_FX_OVERDRIVE] = false;
-    chain.enabled[COYOPEDAL_FX_REVERB] = false;
-    chain.enabled[COYOPEDAL_FX_MODULATION] = false;
-    chain.enabled[COYOPEDAL_FX_DELAY] = false;
+    enabled_mask.store(1U << COYOPEDAL_FX_GATE, std::memory_order_relaxed);
+    adopt(gate_controls, chain.gate);
+    adopt(compressor_controls, chain.compressor);
+    adopt(overdrive_controls, chain.overdrive);
+    adopt(modulation_controls, chain.modulation);
+    adopt_delay();
+    adopt_reverb();
     reverb_state().clear();
     chain.modulation.clear();
     chain.delay.clear();
 }
 
 extern "C" void coyopedal_fx_detach(void) {
-    chain.enabled.fill(false);
+    enabled_mask.store(0U, std::memory_order_relaxed);
     if (compact_reverb)
         compact_reverb->~CompactReverb();
     compact_reverb = nullptr;
@@ -1796,22 +1862,25 @@ extern "C" bool coyopedal_fx_modulation_line_migrate(void* const memory, const s
 }
 
 extern "C" void coyopedal_fx_set_enabled(const coyopedal_fx_block_t block, const bool enabled) {
-    if (block < COYOPEDAL_FX_BLOCK_COUNT) {
-        chain.enabled[block] = enabled;
-    }
+    if (block >= COYOPEDAL_FX_BLOCK_COUNT)
+        return;
+    const unsigned bit = 1U << block;
+    if (enabled)
+        enabled_mask.fetch_or(bit, std::memory_order_relaxed);
+    else
+        enabled_mask.fetch_and(~bit, std::memory_order_relaxed);
+}
+
+extern "C" unsigned coyopedal_fx_enabled_mask(void) {
+    return enabled_mask.load(std::memory_order_relaxed);
 }
 
 extern "C" bool coyopedal_fx_enabled(const coyopedal_fx_block_t block) {
-    return block < COYOPEDAL_FX_BLOCK_COUNT && chain.enabled[block];
+    return block < COYOPEDAL_FX_BLOCK_COUNT && (coyopedal_fx_enabled_mask() & (1U << block)) != 0U;
 }
 
 extern "C" bool coyopedal_fx_any_enabled(void) {
-    for (const bool enabled : chain.enabled) {
-        if (enabled) {
-            return true;
-        }
-    }
-    return false;
+    return coyopedal_fx_enabled_mask() != 0U;
 }
 
 extern "C" const char* coyopedal_fx_name(const coyopedal_fx_block_t block) {
@@ -1856,11 +1925,11 @@ extern "C" bool coyopedal_fx_delay_ready(void) {
 }
 
 extern "C" bool coyopedal_fx_gate_closed(void) {
-    return chain.enabled[COYOPEDAL_FX_GATE] && !chain.gate.open;
+    return coyopedal_fx_enabled(COYOPEDAL_FX_GATE) && !chain.gate.open;
 }
 
 extern "C" int16_t coyopedal_fx_compressor_reduction(void) {
-    if (!chain.enabled[COYOPEDAL_FX_COMPRESSOR]) {
+    if (!coyopedal_fx_enabled(COYOPEDAL_FX_COMPRESSOR)) {
         return 0;
     }
     const float tenths = chain.compressor.reduction_db * 10.0F;
@@ -1868,48 +1937,62 @@ extern "C" int16_t coyopedal_fx_compressor_reduction(void) {
 }
 
 #if defined(__XTENSA__)
-extern "C" void coyopedal_fx_process_pre(float* samples, size_t frame_count)
-    __attribute__((section(".iram1")));
-extern "C" void coyopedal_fx_process_delay(float* samples, size_t frame_count)
-    __attribute__((section(".iram1")));
-extern "C" void coyopedal_fx_process_reverb_stereo(float* left, float* right, size_t frame_count)
-    __attribute__((section(".iram1")));
+#define FX_BLOCK_HOT __attribute__((section(".iram1")))
+#else
+#define FX_BLOCK_HOT
 #endif
 
-extern "C" void coyopedal_fx_process_pre(float* const samples, const size_t frame_count) {
-    if (samples == nullptr) {
+extern "C" FX_BLOCK_HOT void coyopedal_fx_process_pre_masked(float* const samples,
+                                                             const size_t frame_count,
+                                                             const unsigned mask) {
+    if (samples == nullptr)
         return;
-    }
-    if (chain.enabled[COYOPEDAL_FX_GATE]) {
+    adopt(gate_controls, chain.gate);
+    adopt(compressor_controls, chain.compressor);
+    adopt(modulation_controls, chain.modulation);
+    adopt(overdrive_controls, chain.overdrive);
+    if (mask & (1U << COYOPEDAL_FX_GATE))
         chain.gate.process(samples, frame_count);
-    }
-    if (chain.enabled[COYOPEDAL_FX_COMPRESSOR]) {
+    if (mask & (1U << COYOPEDAL_FX_COMPRESSOR))
         chain.compressor.process(samples, frame_count);
-    }
-    // The modulation block is in front of the amp, between the compressor and the
-    // drive, which is where a rig puts its modulation pedals.
-    if (chain.enabled[COYOPEDAL_FX_MODULATION]) {
+    if (mask & (1U << COYOPEDAL_FX_MODULATION))
         chain.modulation.process(samples, frame_count);
-    }
-    if (chain.enabled[COYOPEDAL_FX_OVERDRIVE]) {
+    if (mask & (1U << COYOPEDAL_FX_OVERDRIVE))
         chain.overdrive.process(samples, frame_count);
-    }
 }
 
-extern "C" void coyopedal_fx_process_delay(float* const samples, const size_t frame_count) {
-    if (samples != nullptr && chain.enabled[COYOPEDAL_FX_DELAY]) {
+extern "C" FX_BLOCK_HOT void coyopedal_fx_process_delay_masked(float* const samples,
+                                                               const size_t frame_count,
+                                                               const unsigned mask) {
+    if (samples == nullptr)
+        return;
+    adopt_delay();
+    if (mask & (1U << COYOPEDAL_FX_DELAY))
         chain.delay.process(samples, frame_count);
+}
+
+extern "C" FX_BLOCK_HOT void coyopedal_fx_process_reverb_stereo_masked(float* const left,
+                                                                       float* const right,
+                                                                       const size_t frame_count,
+                                                                       const unsigned mask) {
+    if (left == nullptr || right == nullptr)
+        return;
+    adopt_reverb();
+    if (mask & (1U << COYOPEDAL_FX_REVERB)) {
+        reverb_state().process_stereo(left, right, frame_count);
+    } else {
+        std::copy_n(left, frame_count, right);
     }
 }
 
+extern "C" void coyopedal_fx_process_pre(float* const samples, const size_t frame_count) {
+    coyopedal_fx_process_pre_masked(samples, frame_count, coyopedal_fx_enabled_mask());
+}
+extern "C" void coyopedal_fx_process_delay(float* const samples, const size_t frame_count) {
+    coyopedal_fx_process_delay_masked(samples, frame_count, coyopedal_fx_enabled_mask());
+}
 extern "C" void coyopedal_fx_process_reverb_stereo(float* const left, float* const right,
                                                    const size_t frame_count) {
-    if (left == nullptr || right == nullptr) {
-        return;
-    }
-    if (chain.enabled[COYOPEDAL_FX_REVERB]) {
-        reverb_state().process_stereo(left, right, frame_count);
-        return;
-    }
-    std::copy_n(left, frame_count, right);
+    coyopedal_fx_process_reverb_stereo_masked(left, right, frame_count,
+                                              coyopedal_fx_enabled_mask());
 }

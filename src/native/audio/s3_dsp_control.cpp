@@ -14,8 +14,26 @@ extern "C" bool coyopedal_pedal_dsp_begin_update(void) {
     return usb_audio_begin_update();
 }
 
+extern "C" bool coyopedal_pedal_dsp_begin_control_update(void) {
+    return usb_audio_begin_control_update();
+}
+
 extern "C" void coyopedal_pedal_dsp_end_update(void) {
     usb_audio_end_update();
+}
+
+extern "C" void coyopedal_pedal_dsp_profile_start(void) {
+    g_engine.profile_start();
+}
+extern "C" void coyopedal_pedal_dsp_profile_read(uint32_t* cycles, uint32_t* wide_mixin,
+                                                 uint32_t* blocks) {
+    g_engine.profile_read(cycles, wide_mixin, *blocks);
+}
+
+extern "C" void coyopedal_pedal_dsp_set_controls(const float input_gain, const float output_gain,
+                                                 const float bass_db, const float mid_db,
+                                                 const float treble_db) {
+    g_engine.set_controls(input_gain, output_gain, bass_db, mid_db, treble_db);
 }
 
 extern "C" void coyopedal_pedal_dsp_set_input_gain(const float gain) {

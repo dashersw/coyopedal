@@ -28,6 +28,8 @@ c++ -std=c++20 -O2 -Itests/preset_stubs -Isrc/native/storage -Isrc/native/ui -Is
 build/panel_presets_test
 build/effects_test
 c++ -std=c++20 -O2 -Isrc src/audio/effects.cpp tests/effects_lifecycle_test.cpp -o build/effects_lifecycle_test
+c++ -std=c++20 -O1 -g -fsanitize=address,undefined -pthread -Isrc tests/control_mailbox_test.cpp -o build/control_mailbox_test
+build/control_mailbox_test
 build/effects_lifecycle_test
 c++ -std=c++20 -O2 -Isrc/native/storage -Isrc/native/ui -I"$cjson" src/native/storage/nam_json.cpp tests/nam_parser_cli.cpp build/cjson.o -o build/nam_parser_test
 python3 -m unittest discover -s tests -v
@@ -42,3 +44,11 @@ c++ -O3 -std=c++20 -ffp-contract=off -fcx-limited-range \
   "$link_gc" -Isrc/audio/nam -Isrc src/audio/nam/nam_a2_full_s3_native.cpp \
   tests/nam/prepared_model_test.cpp -o build/prepared_model_test
 build/prepared_model_test assets/models/volum-ampete-4-v30.namb
+
+c++ -std=c++20 -O1 -g -fsanitize=address,undefined -Isrc -Itests src/audio/effects.cpp tests/effects_control_test.cpp -o build/effects_control_test
+build/effects_control_test
+c++ -O3 -std=c++20 -ffp-contract=off \
+  -DCOYOPEDAL_PEDAL_S3_SPLIT_LAYER=8 -ffunction-sections -fdata-sections \
+  "$link_gc" -Isrc/audio/nam -Isrc src/audio/nam/nam_a2_full_s3_native.cpp \
+  src/audio/processor.cpp tests/processor_controls_test.cpp -o build/processor_controls_test
+build/processor_controls_test assets/models/volum-ampete-4-v30.namb

@@ -1176,6 +1176,8 @@ void delayed_effect_profile(const std::uint32_t seconds, const bool full_chain_o
             g_effect_profile_store.error = 2U;
             break;
         }
+        if (cycle_telemetry && !full_chain_only)
+            coyopedal_pedal_dsp_profile_start();
         resume_audio_pipeline();
         // Resuming starts with an intentionally empty output ring. Let the
         // pipeline refill and the recurrent/effect state warm before resetting
@@ -1220,9 +1222,14 @@ void delayed_effect_profile(const std::uint32_t seconds, const bool full_chain_o
             coyopedal_fx_reverb_profile_read(&row.reverb_input_cycles, &row.reverb_tank_cycles,
                                              &row.reverb_blocks);
         }
-        if (!full_chain_only) {
-            g_effect_profile_store.layer_blocks += static_cast<std::uint32_t>(
-                row.audio.captured_frames / COYOPEDAL_PEDAL_BLOCK_FRAMES);
+        if (cycle_telemetry && !full_chain_only) {
+            std::uint32_t cycles[24]{}, wide_mixin[23]{}, sampled_blocks{};
+            coyopedal_pedal_dsp_profile_read(cycles, wide_mixin, &sampled_blocks);
+            g_effect_profile_store.layer_blocks += sampled_blocks;
+            for (std::size_t layer = 0; layer < 24U; ++layer)
+                g_effect_profile_store.layer_cycles[layer] += cycles[layer];
+            for (std::size_t layer = 0; layer < 23U; ++layer)
+                g_effect_profile_store.wide_mixin_blocks[layer] += wide_mixin[layer];
         }
         row.internal_free =
             static_cast<std::uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -1319,7 +1326,8 @@ void send_effect_profile_result(httpd_req_t* const request) {
                g_effect_profile_store.synthetic_input != 0U ? "synthetic" : "live",
                static_cast<unsigned>(g_effect_profile_store.preset),
                static_cast<unsigned>(g_effect_profile_store.model));
-        append("\"layer_blocks\":%u,\"layer_cycles\":[",
+        append("\"layer_sample_stride\":%u,\"layer_blocks\":%u,\"layer_cycles\":[",
+               g_effect_profile_store.layer_blocks != 0U ? 64U : 0U,
                static_cast<unsigned>(g_effect_profile_store.layer_blocks));
         for (unsigned layer = 0U; layer < 24U; ++layer) {
             append("%s%u", layer == 0U ? "" : ",",

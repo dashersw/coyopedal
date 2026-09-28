@@ -2,6 +2,7 @@
 
 // The pedalboard uses the ESP32-S3 A2-Full native engine.
 #include "nam_a2_full_s3_native.hpp"
+#include "audio/control_mailbox.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,12 +11,15 @@ namespace coyopedal::pedal {
 
 // One second-order section, in the direct form the RBJ cookbook's coefficients are
 // written for. Three of them make the amp's tone stack.
-struct Biquad {
+struct BiquadCoefficients {
     float b0 = 1.0F;
     float b1 = 0.0F;
     float b2 = 0.0F;
     float a1 = 0.0F;
     float a2 = 0.0F;
+};
+
+struct Biquad : BiquadCoefficients {
     float x1 = 0.0F;
     float x2 = 0.0F;
     float y1 = 0.0F;
@@ -84,28 +88,41 @@ class Processor {
     using Model = nam_bfp::A2FullS3Native;
     static constexpr std::size_t kStagedLayerCount = Model::kStagedLayerCount;
 
-    using BlockScratch = Model::BlockScratch;
+    struct Controls {
+        float input_gain = 1.0F;
+        float output_gain = 1.0F;
+        bool tone_active = false;
+        BiquadCoefficients bass, mid, treble;
+    };
+    struct BlockScratch : Model::BlockScratch {
+        Controls controls;
+    };
+    // One complete amp edit, published atomically for the next block.
+    void set_controls(float input_gain, float output_gain, float bass_db, float mid_db,
+                      float treble_db) noexcept;
 
     bool begin_block(float* samples, std::size_t frames, BlockScratch& scratch) noexcept;
     void process_layers(BlockScratch& scratch, std::size_t first, std::size_t last) noexcept;
     void finish_block(BlockScratch& scratch, float* samples) noexcept;
+    void profile_start() noexcept {
+        model_.profile_start();
+    }
+    void profile_read(std::uint32_t* cycles, std::uint32_t* wide_mixin,
+                      std::uint32_t& blocks) noexcept {
+        model_.profile_read(cycles, wide_mixin, blocks);
+    }
 
   private:
     void refresh_tone() noexcept;
 
-    float input_gain_ = 0.0F;
-    float output_gain_ = 0.0F;
+    Controls requested_controls_;
+    Controls current_controls_;
+    ControlMailbox<Controls> controls_;
     float bass_db_ = 0.0F;
     float mid_db_ = 0.0F;
     float treble_db_ = 0.0F;
-    // Whether any band is set at all. Three biquads is a trivial cost next to the
-    // profile, but a tone stack sitting flat should be bit-transparent rather than
-    // nearly so, and a filter chain at unity gain is not exactly unity.
-    bool tone_active_ = false;
-    Biquad bass_;
-    Biquad mid_;
-    Biquad treble_;
-    bool bypass_ = false;
+    Biquad bass_, mid_, treble_;
+    std::atomic<bool> bypass_{};
     Model model_;
 };
 

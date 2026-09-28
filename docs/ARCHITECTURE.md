@@ -81,11 +81,25 @@ stage A: if stage A outranks the client, isochronous transfers are resubmitted
 after their slot and the transport inserts silence. Split 8 balances that load:
 it moves one more amp layer to core 1 and returns the reverb to core 0.
 
-When the reverb is off, stage B packs the block itself and the return hop is
-skipped. Blocks travel between stages through lock-free single-producer queues.
+Every block returns to stage A for PCM packing, including when reverb is off.
+This keeps one ordered producer for the output ring: a reverb toggle must not
+let an older wet block on core 0 race a newer dry block on core 1. Blocks travel
+between stages through lock-free single-producer queues.
 There are three pipeline slots and two amp scratch buffers, so up to two blocks
 can be inside the amp at once and a third provides elasticity against the
 48-frame USB packet and 64-frame block cadence.
+
+Routine controls no longer pause the pipeline. The serialized control writer
+prepares coefficients and publishes them through three-buffer mailboxes in
+internal SRAM. Each effect adopts a complete configuration at its next processing
+boundary; amp gain and tone settings are captured together at the start of its
+block. An effect-enable mask travels with each block so a toggle cannot change
+its routing midway through the pipeline. Model and whole-preset changes still
+pause and drain the stages before replacing state.
+
+Measured optimization results and their limits are recorded in the
+[S3 performance report](S3_PERFORMANCE_ROUND4_2026-09-28.md), with a separate
+[display-free comparison](S3_DISPLAY_OFF_2026-09-28.md).
 
 Both idle tasks are removed from the task watchdog in audio mode. The stages
 leave the idle tasks very little time, and a watchdog report printed from
@@ -98,8 +112,8 @@ blocks, because blocks move between stages once per scheduling pass. The main
 contributors to the round trip, in order of size:
 
 - **Pipeline depth.** Each stage hop is 1.33 ms. The amp adds several hops,
-  more when both cores run close to their deadline. Delay and reverb add one
-  more hop, for the return to core 0.
+  more when both cores run close to their deadline. At split 8, the final
+  return to core 0 is always present; bypassing reverb no longer skips it.
 - **Full Speed packetization.** Each side of the interface holds at least one
   whole 1 ms packet. A High Speed host would move much smaller packets, but the
   ESP32-S3 cannot enumerate at High Speed.

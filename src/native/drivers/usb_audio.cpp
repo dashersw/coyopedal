@@ -95,9 +95,9 @@ constexpr std::uint8_t kTeardownRequest = 0;
 constexpr int kTeardownDrainTicks = 200;
 // The feedback endpoint carries only one 16.16 clock value per USB frame, but
 // completing a one-packet URB for every value wakes the USB task 1000 times/s.
-// Batch it like the audio endpoints. The most recent valid value in each URB
-// becomes the rate used to size subsequent playback packets.
-constexpr int kFeedbackPacketsPerUrb = 4;
+// Batch eight feedback frames per URB (125 completions/s). Capture and playback
+// still use one-frame URBs. The newest valid feedback value sets playback size.
+constexpr int kFeedbackPacketsPerUrb = 8;
 constexpr std::size_t kInputRingFrames = 2048;
 // DSP produces 64-frame blocks while Full Speed USB consumes about 48 frames per
 // callback. A 512-frame ring absorbs callback-phase jitter without throwing
@@ -446,6 +446,9 @@ IRAM_ATTR void record_stage_cycles(const bool stage_a, const std::uint32_t cycle
         .fetch_add(1U, std::memory_order_relaxed);
 }
 std::atomic<bool> model_load_pause{};
+// Short control edits stop new DSP blocks while USB keeps filling/draining its
+// rings. Model replacement also asserts model_load_pause to mute capture.
+std::atomic<bool> dsp_control_pause{};
 std::atomic<bool> tuner_active{};
 // The footswitch. The amp block's own switch is the engine's bypass; this one
 // takes the effects with it, so the two cannot be the same flag.
@@ -458,9 +461,10 @@ SemaphoreHandle_t model_control_mutex =
 // Staged pipeline (see docs/ARCHITECTURE.md). Stage A, on core 0: pre-amp
 // effects and amp layers below kSplitLayer. Stage B, on core 1: the remaining
 // layers, the head, the second modulation block and the delay. With the reverb
-// on, the block returns to stage A for the reverb and PCM packing; otherwise
-// stage B packs it. With a split layer of 9 or more, stage B also runs the
-// reverb and always packs. The signal order is the same in every case.
+// on, stage A runs it before PCM packing. Every block returns to stage A,
+// making that stage the single ordered output producer. With a split layer of
+// 9 or more, stage B also runs the reverb and always packs. The signal order
+// is the same in every case.
 constexpr std::size_t kSplitLayer = COYOPEDAL_PEDAL_S3_SPLIT_LAYER;
 static_assert(kSplitLayer > 0U && kSplitLayer < coyopedal::pedal::Processor::kStagedLayerCount);
 // A third in-flight audio block absorbs the 48-frame USB packet / 64-frame DSP
@@ -476,6 +480,7 @@ struct PipelineSlot {
     int scratch_index{-1};
     // Whether the effects chain ran on this block, and whether the profile did.
     // They are separate so that bypassing the amp leaves the effects running.
+    unsigned effect_mask{};
     bool chain{};
     bool amp{};
     bool delay{};
@@ -676,7 +681,8 @@ IRAM_ATTR void stage_a_task(void*) noexcept {
                 const std::uint32_t start = collect_cycles ? esp_cpu_get_cycle_count() : 0U;
                 // Stage B has already run the delay; only the reverb is left.
                 if (slot.reverb) {
-                    coyopedal_fx_process_reverb_stereo(slot.audio, slot.right, kFrames);
+                    coyopedal_fx_process_reverb_stereo_masked(slot.audio, slot.right, kFrames,
+                                                              slot.effect_mask);
                 }
                 if (collect_cycles) {
                     const std::uint32_t elapsed = esp_cpu_get_cycle_count() - start;
@@ -685,12 +691,12 @@ IRAM_ATTR void stage_a_task(void*) noexcept {
                                                   std::memory_order_relaxed);
                     stage_a_telemetry_cycles += elapsed;
                 }
-                // The stereo block is complete here, so pack and publish it on
-                // this stage rather than sending it back to stage B.
+                // The block is complete here. Publish mono or stereo output from
+                // this stage so all completed blocks retain their order.
                 finish_output_slot(slot_index, slot.reverb, false);
                 continue;
             }
-            if (model_load_pause.load(std::memory_order_acquire)) {
+            if (dsp_control_pause.load(std::memory_order_acquire)) {
                 break;
             }
             // Shed a ratcheted capture backlog before taking the next block,
@@ -705,7 +711,7 @@ IRAM_ATTR void stage_a_task(void*) noexcept {
             if (input_ring.available() < kFrames || !acquire_pipeline_slot(slot_index)) {
                 break;
             }
-            if (model_load_pause.load(std::memory_order_acquire)) {
+            if (dsp_control_pause.load(std::memory_order_acquire)) {
                 release_pipeline_scratch(pipeline_slot(slot_index));
                 release_pipeline_slot(slot_index);
                 break;
@@ -741,11 +747,12 @@ IRAM_ATTR void stage_a_task(void*) noexcept {
                 coyopedal_tuner_feed(slot.audio, kFrames);
                 std::fill_n(slot.audio, kFrames, 0.0F);
             } else if (!pedal_bypassed.load(std::memory_order_relaxed)) {
-                slot.chain = coyopedal_fx_any_enabled();
-                slot.delay = coyopedal_fx_enabled(COYOPEDAL_FX_DELAY);
-                slot.reverb = coyopedal_fx_enabled(COYOPEDAL_FX_REVERB);
+                slot.effect_mask = coyopedal_fx_enabled_mask();
+                slot.chain = slot.effect_mask != 0U;
+                slot.delay = (slot.effect_mask & (1U << COYOPEDAL_FX_DELAY)) != 0U;
+                slot.reverb = (slot.effect_mask & (1U << COYOPEDAL_FX_REVERB)) != 0U;
                 if (slot.chain) {
-                    coyopedal_fx_process_pre(slot.audio, kFrames);
+                    coyopedal_fx_process_pre_masked(slot.audio, kFrames, slot.effect_mask);
                 }
                 if (!g_engine.bypassed()) {
                     auto& scratch = pipeline_scratch[slot.scratch_index];
@@ -776,11 +783,9 @@ IRAM_ATTR void stage_a_task(void*) noexcept {
             if (collect_cycles) {
 #if COYOPEDAL_PEDAL_S3_SPLIT_LAYER >= 9
                 record_stage_cycles(true, slot.stage_a_cycles);
-#else
-                if (!slot.delay && !slot.reverb) {
-                    record_stage_cycles(true, slot.stage_a_cycles);
-                }
 #endif
+                // At split 8 every block returns to stage A; finalization
+                // records its complete time after reverb/PCM packing.
             }
         }
     }
@@ -805,17 +810,18 @@ IRAM_ATTR void stage_b_task(void*) noexcept {
             // With layer 8 on stage A, stage B has room for the whole post-amp
             // chain and finishes the slot itself, with no return hop.
             if (slot.delay) {
-                coyopedal_fx_process_delay(slot.audio, kFrames);
+                coyopedal_fx_process_delay_masked(slot.audio, kFrames, slot.effect_mask);
             }
             if (slot.reverb) {
-                coyopedal_fx_process_reverb_stereo(slot.audio, slot.right, kFrames);
+                coyopedal_fx_process_reverb_stereo_masked(slot.audio, slot.right, kFrames,
+                                                          slot.effect_mask);
             }
 #else
             // Delay precedes reverb in the signal chain and fits in stage B's
             // budget, so the return stage on core 0 runs only the reverb and
             // the PCM packing.
             if (slot.delay) {
-                coyopedal_fx_process_delay(slot.audio, kFrames);
+                coyopedal_fx_process_delay_masked(slot.audio, kFrames, slot.effect_mask);
                 slot.delay = false;
             }
 #endif
@@ -833,20 +839,17 @@ IRAM_ATTR void stage_b_task(void*) noexcept {
 #if COYOPEDAL_PEDAL_S3_SPLIT_LAYER >= 9
             finish_output_slot(slot_index, slot.reverb);
 #else
-            if (slot.reverb) {
-                // Stage A runs the reverb and the pack. Record stage B's time
-                // before handing the slot back; the finalizer closes stage A's
-                // interval only.
-                if (collect_cycles) {
-                    record_stage_cycles(false, slot.stage_b_cycles);
-                }
-                const bool queued = stage_c_queue.push(slot_index);
-                configASSERT(queued);
-                (void)queued;
-                xTaskNotifyGive(stage_a_handle);
-            } else {
-                finish_output_slot(slot_index, false);
+            // Keep a single ordered producer for the output ring. A reverb
+            // toggle may leave an older wet block on stage A while this stage
+            // finishes a newer dry block. Publishing from both cores would
+            // race the SPSC write cursor and could reverse those blocks.
+            if (collect_cycles) {
+                record_stage_cycles(false, slot.stage_b_cycles);
             }
+            const bool queued = stage_c_queue.push(slot_index);
+            configASSERT(queued);
+            (void)queued;
+            xTaskNotifyGive(stage_a_handle);
 #endif
         }
     }
@@ -2156,11 +2159,17 @@ bool usb_audio_load_model(const std::uint8_t* const data, const std::size_t size
     return loaded;
 }
 
-bool usb_audio_begin_update() {
+namespace {
+bool begin_update(const bool pause_capture) {
+    // A nested model/preset transaction upgrades a short control edit to the
+    // full pause. The outermost end_update owns resumption and ring cleanup.
+    if (pause_capture) {
+        model_load_pause.store(true, std::memory_order_release);
+    }
     if (control_update_depth++ != 0U) {
         return true;
     }
-    model_load_pause.store(true, std::memory_order_release);
+    dsp_control_pause.store(true, std::memory_order_release);
     if (stage_a_handle == nullptr || dsp_task_handle == nullptr) {
         return true;
     }
@@ -2176,28 +2185,35 @@ bool usb_audio_begin_update() {
     }
     control_update_depth = 0U;
     model_load_pause.store(false, std::memory_order_release);
+    dsp_control_pause.store(false, std::memory_order_release);
     xTaskNotifyGive(stage_a_handle);
     return false;
+}
+} // namespace
+
+bool usb_audio_begin_update() {
+    return begin_update(true);
+}
+
+bool usb_audio_begin_control_update() {
+    return begin_update(false);
 }
 
 void usb_audio_end_update() {
     if (control_update_depth == 0U || --control_update_depth != 0U) {
         return;
     }
-    // Clear the pause before anything can return early. The boot path pauses
-    // before the stages exist, and a flag left set would mute the board for the
-    // rest of the session: stage A sees the pause on every notification, no
-    // block reaches the output ring, and playback pads silence. Bypass travels
-    // through stage A too, so it would be silent as well.
-    model_load_pause.store(false, std::memory_order_release);
-    if (stage_a_handle == nullptr) {
-        // Nothing is streaming and the rings may not even be allocated yet.
-        return;
+    const bool discard_capture = model_load_pause.exchange(false, std::memory_order_acq_rel);
+    if (discard_capture && stage_a_handle != nullptr) {
+        // Capture from a long model load is stale. Short control edits keep it,
+        // and neither pause may release stage A until ring cleanup is finished.
+        input_ring.discard_all();
     }
-    // Do not process the capture accumulated during a 200 ms model load. It is
-    // already stale and would turn one intentional mute into ~40 ms of latency.
-    input_ring.discard_all();
-    xTaskNotifyGive(stage_a_handle);
+    // Also clear this before the boot path can return without any stages.
+    dsp_control_pause.store(false, std::memory_order_release);
+    if (stage_a_handle != nullptr) {
+        xTaskNotifyGive(stage_a_handle);
+    }
 }
 
 void usb_audio_set_tuner(const bool active) {

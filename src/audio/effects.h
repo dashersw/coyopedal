@@ -137,6 +137,12 @@ bool coyopedal_fx_delay_ready(void);
 void coyopedal_fx_set_enabled(coyopedal_fx_block_t block, bool enabled);
 bool coyopedal_fx_enabled(coyopedal_fx_block_t block);
 bool coyopedal_fx_any_enabled(void);
+// Snapshot once on stage A and carry the mask through every pipeline stage.
+unsigned coyopedal_fx_enabled_mask(void);
+void coyopedal_fx_process_pre_masked(float* samples, size_t frames, unsigned mask);
+void coyopedal_fx_process_delay_masked(float* samples, size_t frames, unsigned mask);
+void coyopedal_fx_process_reverb_stereo_masked(float* left, float* right, size_t frames,
+                                               unsigned mask);
 
 // Every block is one pedal: a hard gate, a VCA compressor, a Klon-style drive, a
 // spring-voiced reverb, a chorus and a digital delay.
@@ -147,10 +153,10 @@ const char* coyopedal_fx_name(coyopedal_fx_block_t block);
 uint8_t coyopedal_fx_param_count(coyopedal_fx_block_t block);
 const coyopedal_fx_param_info_t* coyopedal_fx_param_info(coyopedal_fx_block_t block, uint8_t index);
 
-// Current value, and setting it. Out-of-range values are clamped, so the UI does
-// not have to. Setting a parameter is real-time safe and allocation-free: it
-// recomputes coefficients, and no block reallocates or clears its state, so
-// turning a knob never clicks or drops the reverb tail.
+// Control calls are serialized by the caller. Setters prepare coefficients on
+// that thread and publish them without touching live filter/delay state. Each
+// effect adopts a complete value at its next processing boundary; intermediate
+// edits may coalesce. Whole preset/model changes still require a pipeline pause.
 int16_t coyopedal_fx_param(coyopedal_fx_block_t block, uint8_t index);
 void coyopedal_fx_set_param(coyopedal_fx_block_t block, uint8_t index, int16_t value);
 

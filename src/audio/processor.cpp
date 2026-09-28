@@ -81,8 +81,7 @@ Processor::Processor() noexcept {
 }
 
 void Processor::reset() noexcept {
-    input_gain_ = 1.0F;
-    output_gain_ = 1.0F;
+    requested_controls_ = {};
     bass_db_ = 0.0F;
     mid_db_ = 0.0F;
     treble_db_ = 0.0F;
@@ -94,11 +93,13 @@ void Processor::reset() noexcept {
 }
 
 void Processor::set_input_gain(const float gain) noexcept {
-    input_gain_ = gain;
+    requested_controls_.input_gain = gain;
+    controls_.publish(requested_controls_);
 }
 
 void Processor::set_output_gain(const float gain) noexcept {
-    output_gain_ = gain;
+    requested_controls_.output_gain = gain;
+    controls_.publish(requested_controls_);
 }
 
 bool Processor::load_namb(const uint8_t* const data, const std::size_t size,
@@ -112,11 +113,11 @@ bool Processor::model_loaded() const noexcept {
 }
 
 void Processor::set_bypass(const bool bypass) noexcept {
-    bypass_ = bypass;
+    bypass_.store(bypass, std::memory_order_relaxed);
 }
 
 bool Processor::bypassed() const noexcept {
-    return bypass_;
+    return bypass_.load(std::memory_order_relaxed);
 }
 
 void Processor::set_tone(const float bass_db, const float mid_db, const float treble_db) noexcept {
@@ -126,32 +127,47 @@ void Processor::set_tone(const float bass_db, const float mid_db, const float tr
     refresh_tone();
 }
 
+void Processor::set_controls(const float input_gain, const float output_gain, const float bass_db,
+                             const float mid_db, const float treble_db) noexcept {
+    requested_controls_.input_gain = input_gain;
+    requested_controls_.output_gain = output_gain;
+    set_tone(bass_db, mid_db, treble_db);
+}
+
 void Processor::refresh_tone() noexcept {
     // A twentieth of a decibel is below anything audible and below the panel's own half
     // decibel step, so a stack within that of flat is treated as flat and skipped.
     constexpr float kFlat = 0.05F;
-    tone_active_ =
+    requested_controls_.tone_active =
         std::fabs(bass_db_) > kFlat || std::fabs(mid_db_) > kFlat || std::fabs(treble_db_) > kFlat;
-    if (!tone_active_) {
+    if (!requested_controls_.tone_active) {
+        controls_.publish(requested_controls_);
         return;
     }
     // Corners of a Fender-style stack. The mid's Q is deliberately low: a tone control
     // shapes a region, and anything narrower reads as a notch rather than as tone.
-    bass_.low_shelf(100.0F, bass_db_, kSampleRate);
-    mid_.peaking(650.0F, mid_db_, 0.7F, kSampleRate);
-    treble_.high_shelf(3200.0F, treble_db_, kSampleRate);
+    Biquad bass, mid, treble;
+    bass.low_shelf(100.0F, bass_db_, kSampleRate);
+    mid.peaking(650.0F, mid_db_, 0.7F, kSampleRate);
+    treble.high_shelf(3200.0F, treble_db_, kSampleRate);
+    requested_controls_.bass = bass;
+    requested_controls_.mid = mid;
+    requested_controls_.treble = treble;
+    controls_.publish(requested_controls_);
 }
 
 COYOPEDAL_PEDAL_BLOCK_HOT
 bool Processor::begin_block(float* const samples, const std::size_t frames,
                             BlockScratch& scratch) noexcept {
-    if (bypass_ || !model_.loaded()) {
+    if (bypassed() || !model_.loaded()) {
         return false;
     }
-    for (std::size_t index = 0; index < frames; ++index) {
-        samples[index] *= input_gain_;
-    }
-    model_.begin_block(samples, frames, scratch);
+    if (const Controls* next = controls_.consume())
+        current_controls_ = *next;
+    scratch.controls = current_controls_;
+    // The input converter applies gain before Q15 scaling, preserving the two
+    // rounding steps while avoiding a separate buffer write/read pass.
+    model_.begin_block(samples, frames, scratch, scratch.controls.input_gain);
     return true;
 }
 
@@ -163,16 +179,20 @@ void Processor::process_layers(BlockScratch& scratch, const std::size_t first,
 
 COYOPEDAL_PEDAL_BLOCK_HOT
 void Processor::finish_block(BlockScratch& scratch, float* const samples) noexcept {
-    model_.finish_block(scratch, samples);
-    // The tone stack, then the level: a trim after the EQ means turning the bass up
-    // cannot be undone by the level control having been set for a flat stack.
-    if (tone_active_) {
-        for (std::size_t index = 0; index < scratch.frames; ++index) {
-            samples[index] = treble_.process(mid_.process(bass_.process(samples[index])));
-        }
+    // Preserve the order of the two gain operations; combining their factors
+    // would change floating-point rounding. Flat tone can finish in one pass.
+    const Controls& control = scratch.controls;
+    if (!control.tone_active) {
+        model_.finish_block(scratch, samples, control.output_gain);
+        return;
     }
+    static_cast<BiquadCoefficients&>(bass_) = control.bass;
+    static_cast<BiquadCoefficients&>(mid_) = control.mid;
+    static_cast<BiquadCoefficients&>(treble_) = control.treble;
+    model_.finish_block(scratch, samples);
     for (std::size_t index = 0; index < scratch.frames; ++index) {
-        samples[index] *= output_gain_;
+        samples[index] =
+            treble_.process(mid_.process(bass_.process(samples[index]))) * control.output_gain;
     }
 }
 

@@ -46,18 +46,10 @@ static float gain_from_tenths(const int16_t tenths) {
 }
 
 static void apply_amp_gains(void) {
-    if (!coyopedal_pedal_dsp_begin_update()) {
-        return;
-    }
-    // Drive multiplies into the input stage.
-    coyopedal_pedal_dsp_set_input_gain(
-        gain_from_tenths((int16_t)(ui.amp_value[0] + ui.amp_value[1])));
-    coyopedal_pedal_dsp_set_output_gain(gain_from_tenths(ui.amp_value[2]));
-    // Tenths of a decibel on the panel, decibels in the DSP: the tone stack takes a gain
-    // in dB rather than a linear factor, so this is a scale rather than a conversion.
-    coyopedal_pedal_dsp_set_tone((float)ui.amp_value[3] * 0.1F, (float)ui.amp_value[4] * 0.1F,
-                                 (float)ui.amp_value[5] * 0.1F);
-    coyopedal_pedal_dsp_end_update();
+    coyopedal_pedal_dsp_set_controls(gain_from_tenths((int16_t)(ui.amp_value[0] + ui.amp_value[1])),
+                                     gain_from_tenths(ui.amp_value[2]),
+                                     (float)ui.amp_value[3] * 0.1F, (float)ui.amp_value[4] * 0.1F,
+                                     (float)ui.amp_value[5] * 0.1F);
 }
 
 static void apply_bypass(void) {
@@ -229,12 +221,8 @@ bool coyopedal_ui_control_set_param(const uint8_t block, const uint8_t index, co
     if (index >= coyopedal_fx_param_count(fx)) {
         return false;
     }
-    if (!coyopedal_pedal_dsp_begin_update()) {
-        return false;
-    }
 
     coyopedal_fx_set_param(fx, index, value);
-    coyopedal_pedal_dsp_end_update();
 
     return true;
 }
@@ -250,11 +238,7 @@ bool coyopedal_ui_control_set_enabled(const uint8_t block, const bool enabled) {
         return false;
     }
 
-    if (!coyopedal_pedal_dsp_begin_update()) {
-        return false;
-    }
     coyopedal_fx_set_enabled((coyopedal_fx_block_t)block, enabled);
-    coyopedal_pedal_dsp_end_update();
 
     return true;
 }
