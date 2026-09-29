@@ -2,14 +2,14 @@
   position: absolute;
   left: 22px;
   top: 50px;
-  width: 207px;
+  width: calc(100% - 44px);
   height: 99px;
 }
 
 .pedalboard .preset-row {
   display: flex;
   align-items: center;
-  width: 207px;
+  width: 100%;
   height: 30px;
   margin-bottom: 3px;
   padding: 0 9px;
@@ -32,7 +32,7 @@
 
 .preset-pager {
   position: absolute;
-  left: 94px;
+  left: calc(50% - 31.5px);
   top: 156px;
   width: 82px;
 }
@@ -61,7 +61,7 @@
   align-items: center;
   justify-content: center;
   position: absolute;
-  left: 181px;
+  right: 28px;
   top: 155px;
   width: 42px;
   height: 28px;

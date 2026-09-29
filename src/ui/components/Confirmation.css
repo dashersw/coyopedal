@@ -2,6 +2,6 @@
   position: absolute;
   top: 52px;
   left: 35px;
-  width: 181px;
+  width: calc(100% - 70px);
   font-size: 15px;
 }

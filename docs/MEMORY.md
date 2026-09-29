@@ -232,3 +232,112 @@ window and read back from maintenance with `tools/esp32/amoled_remote.py`
 
 After changing placement, check that the graph loads, that `miss=0/0` holds
 with a demanding preset, and that a maintenance round trip and an OTA work.
+
+### Keep the measurement harness out of the audio deadline
+
+Do not call `uxTaskGetSystemState` during an audio window. ESP-IDF scans every
+task's stack high-water mark while holding its SMP scheduler lock. With PSRAM
+stacks, a measured census took 2,200 µs at startup and 1,792 µs at shutdown,
+longer than a 1,333 µs audio block. The diagnostic can create the overruns it
+purports to measure.
+
+The remote window samples named persistent tasks with
+`vTaskGetInfo(..., pdFALSE, ...)`, skipping the stack scan, and captures its DSP
+counters before shutdown diagnostics. Transient workers are omitted from the
+per-task CPU percentages. Two corrected runs measured 114/112 µs for this
+collection and zero DSP misses. See [the UI memory checkpoint](UI_MEMORY_OPTIMIZATION.md)
+for the paired hardware results and their scope.
+
+### Keep UI diagnostics out of audio startup
+
+The UI pump's one-time framebuffer census and render-stack high-water query run
+only in maintenance mode. The pixel census reads the entire PSRAM framebuffer;
+`xTaskGetHandle` walks FreeRTOS task lists under the kernel lock before the stack
+scan. Those diagnostics add memory traffic and scheduling interference during
+the tight startup window. Native pixel tests and maintenance census checks remain
+available; audio stress runs use the display flush odometer without framebuffer
+or task-stack scans. This removes avoidable diagnostic work, not the audio
+window's deadline accounting. Its effect on an intermittent startup miss must
+be measured, not inferred from a passing host build.
+
+## Gea initialization CPU affinity
+
+The compact-node development build selects `GEA_EMBEDDED_GEA_INIT_TASK_CORE=1`.
+Gea initialization uses floating point; when created without affinity, ESP-IDF
+can pin it to whichever CPU first executes those operations. A single diagnostic
+image produced four core-0 starts at 4.984–5.019 seconds and a core-1 start at
+3.975 seconds. Explicit core-1 placement produced three short starts at
+3.944–3.959 seconds and a 90-second-soak first paint at 4.025 seconds. Both audio
+stages and USB retained zero errors/misses in the measured windows. This does
+not establish 60 fps behavior or identical startup to the older 3.887-second
+control. See UI_MEMORY_OPTIMIZATION.md for the complete measurements.
+
+The shared target defaults this new setting to -1 (unpinned). It validates the
+selected CPU at compile time and applies it to either initialization stack
+allocation path. This setting requires the unpublished target change currently
+under qualification; the installed registry target does not implement it yet.
+Do not attribute the observed approximately one-second startup variation solely
+to node stride or pointer-load cost without recording initialization affinity.
+
+The subsequent automatic class-list-capacity build keeps that same core-1 setting
+and 148-byte Node. Class records shrink 12 → 8 B, reducing the fixed tree by
+640 B to 27,256 B without additional field-read loads. Its three short starts
+were 3.876–3.904 seconds; the UI/audio and steady-load windows retained zero
+DSP misses, USB errors and watchdog firings. See UI_MEMORY_OPTIMIZATION.md for
+the measured heap delta and the distinction between fixed storage and heap
+variation. The approximately 50-byte node target remains open.
+
+The supporting-record candidate (`candidate-record-padding`) records two startup
+misses, despite 7,776 B more observed free PSRAM. Its maxima were 320,304 and
+320,600 cycles. Three subsequent class-capacity control windows passed. Do not
+qualify a storage change solely from field-load assembly or native tests; CSS
+record strides and code layout can change execution cost without a style pointer.
+The candidate is retained for investigation; see UI_MEMORY_OPTIMIZATION.md.
+
+The combined `candidate-animation-pruned` follow-up automatically excludes
+unreachable CSS/declarative animation code, tracking and per-frame polling.
+Frame callbacks remain. Firmware is 44,816 B smaller than class-capacity,
+static PSRAM BSS saves 1,616 B, and matched maintenance free PSRAM rises 13,248 B
+(do not add those savings). Node stays 148 B with direct style fields. All five
+startup/UI/audio windows pass at 15 fps; median first paint is 3.833312 s and
+steady audio time is unchanged. This supersedes the failed record-only image,
+not its recorded failure. Current artifacts and limits are in
+UI_MEMORY_OPTIMIZATION.md. No package publication or registry-only requalification
+has occurred for this batch.
+
+### Opaque-alpha / 144-byte node experiment
+
+`candidate-alpha-front` removes provably unused text/border alpha, reuses record
+tail padding and keeps style at offset zero. Node 148 → 144 B; the 160-slot tree
+27,256 → 26,616 B; matched device free PSRAM +1,144 B; firmware −1,104 B.
+Ordinary field reads and style-reference passing retain their S3 instruction
+sequences. Full/pruned pixels, copy/reset tests and transparent-color retention
+pass. No pointer-based style storage is involved.
+
+Do not promote this image merely because it is smaller. Three matched starts
+regress median first paint 3.862903 → 3.899955 s (+0.96%). The worst observed
+core-0 stage grows 314,903 → 318,446 cycles against a 320,000-cycle budget:
+21.24 → 6.48 µs of measured headroom. All five windows have zero deadline,
+USB or watchdog failures; steady means are effectively unchanged. Preliminary
+text-first layouts also regress boot (+1.89% / +4.90%). The 148-byte animation-
+pruned build remains qualified. The source/ABI experiment and all three images
+are preserved for continued work; no release was made. See
+[UI memory measurements](UI_MEMORY_OPTIMIZATION.md) for artifacts and limitations.
+
+### 2026-09-29: rule-plan/reset batch remains experimental
+
+The 144-byte direct Node plus automatic pseudo-element pruning reduces active
+rule plans 1,012 → 228 B and the target style-recomputation stack frame
+2,320 → 592 B. Copying a constant default style avoids temporary Node setup.
+Firmware falls 3,776 B to 2,982,768 B. Matched maintenance PSRAM rises 66,996 B;
+65,536 B comes from a mapping page boundary, not node allocation. Stack task
+reservations are unchanged. All 22 native frames and twelve allocation-phase
+hashes match; host allocated bytes do not decrease further.
+
+Five device windows have zero DSP misses, USB transfer errors and watchdog
+firings, but the UI stress window pads/trims 241 / 320 frames versus 99 / 145 in
+a fresh control repeat. Do not qualify it merely from the lower peak DSP time
+or the short-run first-paint median. The saved candidate-animation-pruned image
+is restored in maintenance mode; candidate-reset-plan and its full logs remain
+available for diagnosis. Native snapshots still have unneeded length/color/class
+capacity storage to audit together; no field-read indirection is accepted.

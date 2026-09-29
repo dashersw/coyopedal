@@ -20,7 +20,7 @@ export const board = {
     pbAction(action, index, value)
   },
   // Where a pointer event landed, from its clientX and clientY, read back
-  // through keys 1 and 2 in the panel's 251 × 205 points. Each host does the
+  // through keys 1 and 2 in logical CSS pixels; key 3 is the viewport width. Each host does the
   // mapping: the board divides out its pixel ratio, the preview its page scale.
   pointer(x: number, y: number): void {
     pbSet(1, x)

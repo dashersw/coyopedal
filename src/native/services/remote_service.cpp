@@ -471,6 +471,26 @@ struct AudioWindowResult {
 RTC_NOINIT_ATTR AudioWindowResult g_audio_window_result;
 
 #if configGENERATE_RUN_TIME_STATS && configUSE_TRACE_FACILITY
+// uxTaskGetSystemState scans every task's stack high-water mark while holding
+// the SMP scheduler lock. With PSRAM stacks that can stall the DSP for longer
+// than a block. Sample only persistent audio/UI tasks, without stack scanning.
+// These tasks live until reboot; transient workers such as gea_init are omitted.
+UBaseType_t capture_audio_task_run_time(TaskStatus_t* const tasks) {
+    constexpr const char* names[] = {"nam_a",     "nam_b",    "usb_client",   "usb_host",
+                                     "usb_beat",  "v1_pump",  "ft6336-touch", "gea_runtime",
+                                     "app_frame", "gea_rwrk", "esp_timer",    "IDLE0",
+                                     "IDLE1"};
+    static_assert(sizeof names / sizeof *names <= kTaskSnapshotMax);
+    UBaseType_t count = 0;
+    for (const char* const name : names) {
+        const TaskHandle_t task = xTaskGetHandle(name);
+        if (task != nullptr) {
+            vTaskGetInfo(task, &tasks[count++], pdFALSE, eInvalid);
+        }
+    }
+    return count;
+}
+
 void log_task_run_time(const TaskStatus_t* const start, const UBaseType_t start_count,
                        const TaskStatus_t* const end, const UBaseType_t end_count,
                        const std::int64_t elapsed_us) {
@@ -514,6 +534,9 @@ void log_task_run_time(const TaskStatus_t* const start, const UBaseType_t start_
 void audio_window_expired(void*) {
     usb_audio_diagnostics_t audio{};
     usb_audio_get_diagnostics(&audio);
+    // Close the measurement before collecting or logging its diagnostics.
+    usb_audio_window_stats_t window{};
+    usb_audio_window_stats(&window);
     g_audio_window_result.seconds = g_audio_window_seconds;
     g_audio_window_result.input_peak = audio.input_peak;
     g_audio_window_result.channel_peak[0] = audio.input_channel_peak[0];
@@ -542,7 +565,10 @@ void audio_window_expired(void*) {
     // lose. Everything below it is a counter that survives on its own.
     if (g_task_snapshot_start != nullptr) {
         TaskStatus_t* const end = g_task_snapshot_start + kTaskSnapshotMax;
-        const UBaseType_t end_count = uxTaskGetSystemState(end, kTaskSnapshotMax, nullptr);
+        const std::int64_t census_start_us = esp_timer_get_time();
+        const UBaseType_t end_count = capture_audio_task_run_time(end);
+        ESP_LOGW(kTag, "audio window end task census: %lld us",
+                 static_cast<long long>(esp_timer_get_time() - census_start_us));
         log_task_run_time(g_task_snapshot_start, g_task_snapshot_start_count, end, end_count,
                           esp_timer_get_time() - g_task_snapshot_start_us);
     }
@@ -564,8 +590,6 @@ void audio_window_expired(void*) {
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
              static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
     {
-        usb_audio_window_stats_t window{};
-        usb_audio_window_stats(&window);
         char line[256];
         int at = std::snprintf(line, sizeof line,
                                "audio window since configure: core0 max=%lu miss=%lu core1 "
@@ -2516,9 +2540,11 @@ void coyopedal_remote_audio_window_configure() {
             heap_caps_malloc(2U * kTaskSnapshotMax * sizeof(TaskStatus_t), MALLOC_CAP_SPIRAM));
     }
     if (g_task_snapshot_start != nullptr) {
-        g_task_snapshot_start_count =
-            uxTaskGetSystemState(g_task_snapshot_start, kTaskSnapshotMax, nullptr);
+        const std::int64_t census_start_us = esp_timer_get_time();
+        g_task_snapshot_start_count = capture_audio_task_run_time(g_task_snapshot_start);
         g_task_snapshot_start_us = esp_timer_get_time();
+        ESP_LOGW(kTag, "audio window start task census: %lld us",
+                 static_cast<long long>(g_task_snapshot_start_us - census_start_us));
     }
 #endif
     if (g_audio_window_ui_soak && !g_audio_window_no_ui) {

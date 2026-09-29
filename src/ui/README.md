@@ -19,8 +19,12 @@ In the browser, Vite builds it against the Gea web runtime for the preview.
   `src/preview/main.ts` installs a simulated pedal from
   `src/preview/board-fixture.mjs` before mounting the same components.
 
-The logical layout is 251 × 205 points, drawn at 2× on the 502 × 410 panel with
-its 130-pixel corner radius. The UI font is `assets/fonts/Saira-Bold-Pedal.otf`: Saira Bold with the UI's
+The layout fills its viewport width, with fixed-size text and controls and a minimum
+height of 205 logical pixels. At 2×, the 2.06 panel uses 251 × 205 logical pixels
+and the landscape 2.41 panel uses 300 × 225. Lists, sliders, the keyboard and
+tuner expand horizontally; the browser preview has a screen-width selector.
+Board key 3 reports the live logical viewport width so slider touch mapping
+uses the same 29-pixel side insets as the CSS. The UI font is `assets/fonts/Saira-Bold-Pedal.otf`: Saira Bold with the UI's
 icons drawn in as glyphs by `tools/font_glyphs.mjs`.
 
 ## Commands

@@ -14,12 +14,12 @@ const root = document.getElementById('app')!
 // Keys 1 and 2 take a pointer's page position and hold it in panel points.
 function set(key: number, value: number) {
   const bounds = root.getBoundingClientRect()
-  if (key === 1) value = ((value - bounds.left) * 251) / bounds.width
-  if (key === 2) value = ((value - bounds.top) * 205) / bounds.height
+  if (key === 1) value = ((value - bounds.left) * root.clientWidth) / bounds.width
+  if (key === 2) value = ((value - bounds.top) * root.clientHeight) / bounds.height
   fixture.set(key, value)
 }
 Object.assign(globalThis, {
-  pbGet: fixture.get,
+  pbGet: (key: number) => (key === 3 ? root.clientWidth : fixture.get(key)),
   pbSet: set,
   pbLabel: fixture.label,
   pbAction: fixture.action,
@@ -32,8 +32,8 @@ const { pedalboard } = await import('../ui/stores/PedalboardStore')
 
 installMouseScroll(root)
 new ResizeObserver(() => {
-  root.style.setProperty('--panel-scale', String(root.clientWidth / 251))
-  root.style.height = `${(root.clientWidth * 205) / 251}px`
+  document.getElementById('dimensions')!.textContent =
+    `${root.clientWidth} × ${root.clientHeight} logical pixels`
 }).observe(root)
 
 function time(now: number) {
@@ -64,3 +64,9 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault()
   }
 })
+
+document.getElementById('screen-size')!.onchange = (event) => {
+  const width = Number((event.target as HTMLSelectElement).value)
+  const device = document.querySelector<HTMLElement>('.device')!
+  device.style.width = width ? `${width * 2 + 30}px` : '100%'
+}

@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "controls.h"
-#include "ui/tree_internal.h"
+#include "ui/tree_inspection.h"
 
 // The engine's live device pixel ratio (engine/ui/style.cpp). Declared rather
 // than included: this file already reaches into the engine for the tree, and
@@ -310,20 +310,7 @@ void frame() {
 // Read after a repaint by the on-device UI check. Best effort: the render task
 // owns the tree, so a concurrent mount can make this miss a node.
 bool text_mounted(const char* text) {
-    auto& tree = gea::embedded::ui::Tree::instance();
-    for (int i = 0; i < tree.nodeCount(); ++i) {
-        if (tree.node(i).text != text)
-            continue;
-        int node = i;
-        for (int depth = 0; node >= 0 && depth < tree.nodeCount(); ++depth) {
-            if (gea::embedded::ui::isDisplayNone(tree.node(node).style))
-                break;
-            if (node == tree.mountedRoot())
-                return true;
-            node = tree.node(node).parent;
-        }
-    }
-    return false;
+    return gea::embedded::ui::TreeInspection::hasMountedText(text);
 }
 } // namespace
 double pbGet(double key) {
@@ -345,6 +332,8 @@ double pbGet(double key) {
         return pointer_x;
     case 2:
         return pointer_y;
+    case 3:
+        return gea::embedded::ui::TreeInspection::mountedWidth() / pixel_ratio();
     case 4:
         return screen;
     case 5:

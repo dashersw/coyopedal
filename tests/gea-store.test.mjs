@@ -134,3 +134,24 @@ test('every list comparison in sync() skips the index the board has not got', as
     )
   }
 })
+
+test('sliders map taps and drags across responsive viewport widths', () => {
+  const values = []
+  store.parameter = (index, value) => values.push([index, value])
+  for (const width of [251, 300, 480]) {
+    fixture.set(3, width)
+    const midpoint = width / 2
+    store.sliderDown(0, midpoint, 64)
+    store.sliderUp(0, midpoint, 64)
+    assert.deepEqual(values.at(-1), [0, 0.5])
+    store.sliderDown(1, 29, 102)
+    store.sliderMove(1, width - 29, 102)
+    assert.deepEqual(values.at(-1), [1, 1])
+    store.sliderUp(1, width - 29, 102)
+    const count = values.length
+    store.sliderDown(2, midpoint, 140)
+    store.sliderMove(2, midpoint, 160)
+    store.sliderUp(2, midpoint, 160)
+    assert.equal(values.length, count, 'vertical scrolling must not change a parameter')
+  }
+})

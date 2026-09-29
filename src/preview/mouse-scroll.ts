@@ -57,7 +57,7 @@ export function installMouseScroll(root: HTMLElement) {
     dragged = suppressClick = true
     event.preventDefault()
     const now = performance.now()
-    const scale = root.clientWidth / 251
+    const scale = root.getBoundingClientRect().width / root.clientWidth
     const delta = (previousY - event.clientY) / scale
     const before = area.scrollTop
     area.scrollTop += delta

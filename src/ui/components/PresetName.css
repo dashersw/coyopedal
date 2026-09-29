@@ -2,7 +2,7 @@
   position: absolute;
   left: 26px;
   top: 49px;
-  width: 198px;
+  width: calc(100% - 52px);
   height: 25px;
   border-radius: 5px;
   background: #343d45;
@@ -15,7 +15,7 @@
   position: absolute;
   left: 27px;
   top: 80px;
-  width: 197px;
+  width: calc(100% - 54px);
 }
 
 .key-row {
@@ -26,7 +26,7 @@
 }
 
 .pedalboard .key-row button {
-  width: 18px;
+  width: calc(10% - 1.8px);
   height: 22px;
   background: #343d45;
   active-background-color: #343d45;
@@ -59,7 +59,7 @@
 }
 
 .pedalboard .keyboard-footer .space {
-  width: 95px;
+  flex: 1;
 }
 
 .pedalboard .keyboard-footer button:last-child {

@@ -341,11 +341,13 @@ export class PedalboardStore extends Store {
       return
     }
     if (dx > 6) this.sliderDragging = true
-    if (this.sliderDragging) this.parameter(index, (board.get(1) - 29) / 193)
+    if (this.sliderDragging)
+      this.parameter(index, (board.get(1) - 29) / Math.max(1, board.get(3) - 58))
   }
   sliderUp(index: number, x: number, y: number) {
     board.pointer(x, y)
-    if (this.sliderIndex === index) this.parameter(index, (board.get(1) - 29) / 193)
+    if (this.sliderIndex === index)
+      this.parameter(index, (board.get(1) - 29) / Math.max(1, board.get(3) - 58))
     this.sliderIndex = -1
   }
   parameter(index: number, normalized: number) {

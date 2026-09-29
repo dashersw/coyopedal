@@ -3,7 +3,8 @@
   left: 35px;
   top: 13px;
   height: 29px;
-  max-width: 184px;
+  max-width: calc(100% - 108px);
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -24,6 +25,6 @@
   top: 29px;
   left: 35px;
   white-space: nowrap;
-  max-width: 185px;
+  max-width: calc(100% - 70px);
   overflow: hidden;
 }

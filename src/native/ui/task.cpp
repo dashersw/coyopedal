@@ -26,9 +26,10 @@
 #include "remote_service.h"
 
 #include "display.h"
+#include "canvas.h"
 #include "event.h"
 #include "services/frame_scheduler.h"
-#include "ui/tree_internal.h"
+#include "ui/tree_inspection.h"
 
 void s3_v1_ui_wake();
 bool coyopedal_library_init();
@@ -51,7 +52,7 @@ char maintenance_detail[64]{"STARTING"};
 // count is the mounted tree, and countNonBlackPixels reads back the pixels the
 // panel was last given.
 void log_panel_census() {
-    const int nodes = gea::embedded::ui::Tree::instance().nodeCount();
+    const int nodes = gea::embedded::ui::TreeInspection::nodeCount();
     const int painted = gea::platform::display::Display::countNonBlackPixels(true);
     const auto* const canvas = gea::platform::display::Display::canvas();
     ESP_LOGI(kTag, "panel census: nodes=%d non_black_px=%d canvas=%dx%d brightness=%d", nodes,
@@ -69,8 +70,16 @@ void pump_task(void*) {
     while (true) {
         ui_runs.fetch_add(1U, std::memory_order_relaxed);
         const std::uint32_t run = ui_runs.load(std::memory_order_relaxed);
-        if (run == 30U)
+        // Framebuffer/stack scans are maintenance diagnostics. In audio mode
+        // they contend for PSRAM, and xTaskGetHandle searches the task lists
+        // under the kernel lock. Keep that work out of the DSP startup window.
+        if (run == 30U && maintenance_screen.load(std::memory_order_relaxed)) {
             log_panel_census();
+            const TaskHandle_t render = xTaskGetHandle("gea_runtime");
+            if (render != nullptr)
+                ESP_LOGI(kTag, "render stack headroom: %u bytes",
+                         static_cast<unsigned>(uxTaskGetStackHighWaterMark(render)));
+        }
         // GEA_EMBEDDED_MAX_NODES is 160 for this app against the framework default
         // of 512, which is what makes the per-node style marker arrays affordable
         // in internal SRAM (each is kMaxNodes * 2 bytes, and there are several).
@@ -78,20 +87,10 @@ void pump_task(void*) {
         // budget is deliberate -- but a silent overrun would corrupt style state, so
         // say so once the tree gets within a quarter of the ceiling. Silent in the
         // normal case: this must not pollute the maintenance log ring.
-        if (!node_ceiling_warned && gea::embedded::ui::Tree::instance().nodeCount() > 120) {
+        if (!node_ceiling_warned && gea::embedded::ui::TreeInspection::nodeCount() > 120) {
             node_ceiling_warned = true;
             ESP_LOGW(kTag, "UI tree reached %d nodes against a GEA_EMBEDDED_MAX_NODES of 160",
-                     gea::embedded::ui::Tree::instance().nodeCount());
-        }
-        // How close does a touch-driven re-render come to the render task's
-        // stack? Reported once, next to the panel census. Never put a periodic
-        // probe here: it would fill the maintenance log ring and push out the
-        // boot log, the one place that records whether the A2-Full graph loaded.
-        if (run == 30U) {
-            const TaskHandle_t render = xTaskGetHandle("gea_runtime");
-            if (render != nullptr)
-                ESP_LOGI(kTag, "render stack headroom: %u bytes",
-                         static_cast<unsigned>(uxTaskGetStackHighWaterMark(render)));
+                     gea::embedded::ui::TreeInspection::nodeCount());
         }
         TickType_t wait = pdMS_TO_TICKS(100);
         if (!coyopedal_remote_mode_busy()) {

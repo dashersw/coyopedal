@@ -17,8 +17,8 @@
     "lint:fix": "eslint . --fix",
     "check": "npm run lint && npm run check:frontend && npm run format:check",
     "build": "npm run build:web",
-    "build:firmware": "gea build --board amoled",
-    "flash:firmware": "gea flash --board amoled",
+    "build:firmware": "gea build --board amoled-241",
+    "flash:firmware": "gea flash --board amoled-241",
     "remote:configure": "node scripts/python.mjs tools/esp32/configure_remote.py",
     "remote": "node scripts/python.mjs tools/esp32/amoled_remote.py",
     "fetch:volum": "node scripts/python.mjs tools/fetch_volum.py",
@@ -223,6 +223,64 @@
               "offset": "0x8f0000",
               "size": "0x710000"
             }
+          },
+          "esp32-s3-touch-amoled-2.41": {
+            "nvs": {
+              "type": "data",
+              "subtype": "nvs",
+              "offset": "0x9000",
+              "size": "0x6000"
+            },
+            "otadata": {
+              "type": "data",
+              "subtype": "ota",
+              "offset": "0xf000",
+              "size": "0x2000"
+            },
+            "phy_init": {
+              "type": "data",
+              "subtype": "phy",
+              "offset": "0x11000",
+              "size": "0x1000"
+            },
+            "ota_0": {
+              "type": "app",
+              "subtype": "ota_0",
+              "offset": "0x20000",
+              "size": "0x400000"
+            },
+            "ota_1": {
+              "type": "app",
+              "subtype": "ota_1",
+              "offset": "0x420000",
+              "size": "0x400000"
+            },
+            "models": {
+              "type": "data",
+              "subtype": "0x40",
+              "offset": "0x820000",
+              "size": "0x40000",
+              "data": "build/factory/models.bin"
+            },
+            "presets": {
+              "type": "data",
+              "subtype": "0x41",
+              "offset": "0x860000",
+              "size": "0x10000",
+              "data": "build/factory/presets.json"
+            },
+            "user_models": {
+              "type": "data",
+              "subtype": "0x42",
+              "offset": "0x870000",
+              "size": "0x80000"
+            },
+            "storage": {
+              "type": "data",
+              "subtype": "spiffs",
+              "offset": "0x8f0000",
+              "size": "0x710000"
+            }
           }
         }
       }
@@ -272,6 +330,7 @@
       "GEA_INLINE_COMPILED_STYLE_CACHE_ENTRIES": 8,
       "GEA_EMBEDDED_DEVICE_CONTROL": 0,
       "GEA_RUNTIME_COMPACT_ALLOCATION": 1,
+      "GEA_EMBEDDED_GEA_INIT_TASK_CORE": 1,
       "GEA_EMBEDDED_RUNTIME_TASK_PRIORITY": 18,
       "GEA_EMBEDDED_TOUCH_TASK_PRIORITY": 21,
       "GEA_SCROLL_TRACE": 0,
@@ -280,10 +339,10 @@
       "GEA_EMBEDDED_RUNTIME_TASK_STACK_EXTERNAL": 1,
       "GEA_EMBEDDED_DISPLAY_SOFTWARE_LANDSCAPE_PRIMARY": 1,
       "GEA_EMBEDDED_DISPLAY_ROTATE_LANDSCAPE": 1,
-      "GEA_EMBEDDED_DISPLAY_WIDTH": 502,
-      "GEA_EMBEDDED_DISPLAY_HEIGHT": 410,
-      "GEA_EMBEDDED_DISPLAY_NATIVE_WIDTH": 410,
-      "GEA_EMBEDDED_DISPLAY_NATIVE_HEIGHT": 502,
+      "GEA_EMBEDDED_DISPLAY_WIDTH": 600,
+      "GEA_EMBEDDED_DISPLAY_HEIGHT": 450,
+      "GEA_EMBEDDED_DISPLAY_NATIVE_WIDTH": 450,
+      "GEA_EMBEDDED_DISPLAY_NATIVE_HEIGHT": 600,
       "GEA_EMBEDDED_DISPLAY_CO5300_RECT_PER_CHUNK_DRAIN": 0,
       "GEA_EMBEDDED_DISPLAY_LANDSCAPE_COLUMN_WINDOWS": 1,
       "GEA_EMBEDDED_DISPLAY_SPI_TRANSACTION_QUEUE_DEPTH": 4,
@@ -292,8 +351,9 @@
       "GEA_EMBEDDED_DISPLAY_FLUSH_QUEUE_DEPTH": 2,
       "GEA_EMBEDDED_DISPLAY_FLUSH_QUEUE_DEPTH_LIMIT": 2,
       "GEA_EMBEDDED_DEFAULT_FRAME_INTERVAL_US": 66667,
-      "GEA_EMBEDDED_DISPLAY_INTERNAL_RESERVE_BYTES": 13312,
-      "GEA_EMBEDDED_MAX_NODES": 160
+      "GEA_EMBEDDED_DISPLAY_INTERNAL_RESERVE_BYTES": 0,
+      "GEA_EMBEDDED_MAX_NODES": 160,
+      "GEA_BOARD_HAS_POWER": 0
     },
     "cssDevicePixelRatio": 2
   },

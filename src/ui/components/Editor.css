@@ -2,7 +2,7 @@
   position: absolute;
   top: 50px;
   left: 24px;
-  width: 203px;
+  width: calc(100% - 48px);
   height: 114px;
 }
 
@@ -19,7 +19,7 @@
 
 .editor-pager {
   position: absolute;
-  left: 56px;
+  left: calc(50% - 69.5px);
   top: 166px;
   width: 139px;
 }

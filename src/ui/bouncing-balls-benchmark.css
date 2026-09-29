@@ -1,0 +1,38 @@
+@font-face {
+  font-family: Saira;
+  font-weight: 700;
+  src: url('../../assets/fonts/Saira-Bold-Pedal.otf');
+}
+
+.benchmark-app {
+  width: 100vw;
+  height: 100vh;
+  background-color: #000000;
+  overflow: hidden;
+}
+
+.benchmark-field {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+.benchmark-ball {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+}
+
+.benchmark-fps {
+  position: absolute;
+  font-family: Saira;
+  font-weight: 700;
+  top: 3vmin;
+  left: 3vmin;
+  z-index: 10;
+  color: #ffffff;
+  font-size: 26vmin;
+}

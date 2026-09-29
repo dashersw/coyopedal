@@ -1,5 +1,5 @@
 .preset-count {
-  width: 159px;
+  width: 100%;
   text-align: center;
   font-size: 11px;
   line-height: 14px;
@@ -23,7 +23,7 @@
 }
 
 .next {
-  left: 205px;
+  right: 6px;
 }
 
 .step-chevron {
@@ -35,7 +35,7 @@
   position: absolute;
   left: 46px;
   top: 22px;
-  width: 159px;
+  width: calc(100% - 92px);
   height: 90px;
   display: flex;
   flex-direction: column;
@@ -44,7 +44,7 @@
 }
 
 .preset-hero-name {
-  width: 159px;
+  width: 100%;
   font-size: 22px;
   line-height: 26px;
   text-align: center;
@@ -55,7 +55,7 @@
 }
 
 .preset-hero-amp {
-  width: 159px;
+  width: 100%;
   font-size: 15px;
   line-height: 18px;
   color: #93a0aa;
@@ -69,7 +69,7 @@
   position: absolute;
   left: 28px;
   top: 121px;
-  width: 195px;
+  width: calc(100% - 56px);
   height: 1px;
   background: #2a3339;
 }
@@ -78,7 +78,7 @@
   position: absolute;
   left: 12px;
   top: 108px;
-  width: 227px;
+  width: calc(100% - 24px);
   height: 46px;
   display: flex;
 }
@@ -223,13 +223,13 @@
 }
 
 .tune {
-  left: 70px;
+  left: calc(50% - 55.5px);
 }
 
 /* The master pill's dot is the same one-class toggle as the chain dots, with
    its two colours as custom properties on the pill. */
 .master {
-  left: 129px;
+  left: calc(50% + 3.5px);
   --lit: #82bca9;
   --ring: #5c6870;
 }

@@ -9,7 +9,7 @@
   position: absolute;
   top: 122px;
   left: 28px;
-  width: 195px;
+  width: calc(100% - 56px);
   text-align: center;
   font-size: 11px;
   color: #93a0aa;
@@ -19,7 +19,7 @@
   position: absolute;
   left: 28px;
   top: 72px;
-  width: 195px;
+  width: calc(100% - 56px);
   overflow: hidden;
 }
 
@@ -27,6 +27,6 @@
   position: absolute;
   left: 28px;
   top: 96px;
-  width: 195px;
+  width: calc(100% - 56px);
   color: #82bca9;
 }

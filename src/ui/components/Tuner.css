@@ -1,7 +1,7 @@
 .tuner-reference,
 .tuner-frequency {
   position: absolute;
-  width: 251px;
+  width: 100%;
   text-align: center;
   font-size: 11px;
   color: #93a0aa;
@@ -18,7 +18,7 @@
 .tuner-note {
   position: absolute;
   top: 53px;
-  width: 251px;
+  width: 100%;
   height: 56px;
   text-align: center;
   font-size: 52px;
@@ -34,14 +34,14 @@
   position: absolute;
   left: 35.5px;
   top: 129px;
-  width: 180px;
+  width: calc(100% - 71px);
   height: 25px;
 }
 
 .tuner-center {
   position: absolute;
   top: 0;
-  left: 84px;
+  left: calc(50% - 6px);
   width: 12px;
   height: 25px;
   border-radius: 4px;
@@ -54,7 +54,7 @@
 
 .ticks {
   position: absolute;
-  width: 180px;
+  width: 100%;
   height: 25px;
   display: flex;
   justify-content: space-between;
@@ -84,7 +84,7 @@
   position: absolute;
   top: 154px;
   left: 26px;
-  width: 198px;
+  width: calc(100% - 52px);
   display: flex;
   justify-content: space-between;
   font-size: 11px;
@@ -94,7 +94,7 @@
 .tuner-status {
   position: absolute;
   top: 174px;
-  width: 251px;
+  width: 100%;
   text-align: center;
   font-size: 15px;
 }

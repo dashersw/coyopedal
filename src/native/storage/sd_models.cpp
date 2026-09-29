@@ -16,6 +16,9 @@
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
+#if defined(GEA_EMBEDDED_RM690B0_PANEL)
+#include "board.h"
+#endif
 
 extern coyopedal::pedal::Processor g_engine;
 namespace {
@@ -36,9 +39,15 @@ bool mount() {
     host.max_freq_khz = SDMMC_FREQ_DEFAULT;
     sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
     slot.width = 1;
+#if defined(GEA_EMBEDDED_RM690B0_PANEL)
+    slot.clk = gea::platform::board::storage.clk;
+    slot.cmd = gea::platform::board::storage.cmd;
+    slot.d0 = gea::platform::board::storage.data0;
+#else
     slot.clk = GPIO_NUM_2;
     slot.cmd = GPIO_NUM_1;
     slot.d0 = GPIO_NUM_3;
+#endif
     slot.d1 = slot.d2 = slot.d3 = slot.d4 = slot.d5 = slot.d6 = slot.d7 = GPIO_NUM_NC;
     slot.cd = slot.wp = GPIO_NUM_NC;
     slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;

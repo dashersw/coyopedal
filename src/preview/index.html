@@ -14,9 +14,18 @@
       </p>
       <div class="device"><div id="app"></div></div>
       <footer>
-        <span>502 × 410 AMOLED · 130 px corner radius</span
+        <span id="dimensions">300 × 225 logical pixels</span
         ><button id="reset">Reset preview</button>
       </footer>
+      <div class="pitch-control">
+        <label for="screen-size">Screen width </label>
+        <select id="screen-size">
+          <option value="251">2.06 AMOLED (251 px)</option>
+          <option value="300" selected>2.41 AMOLED (300 px)</option>
+          <option value="480">Wide (480 px)</option>
+          <option value="0">Fit window</option>
+        </select>
+      </div>
       <div class="pitch-control">
         <label for="pitch">Simulated pitch </label
         ><select id="pitch">

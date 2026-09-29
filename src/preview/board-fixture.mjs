@@ -229,6 +229,7 @@ export function createPanelPreviewStore(storage) {
     load(0)
   }
   function get(k) {
+    if (k === 3) return state[3] || 251
     if (k === 60) return tunerReading().voiced ? 1 : 0
     if (k === 61) return tunerReading().cents
     if (k === 9) return paramNames[state[5] || 0].length

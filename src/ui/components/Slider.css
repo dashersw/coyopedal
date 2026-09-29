@@ -1,6 +1,6 @@
 .slider {
   position: relative;
-  width: 193px;
+  width: calc(100% - 10px);
   height: 14px;
   margin-left: 5px;
   touch-action: pan-y;
@@ -12,7 +12,7 @@
   position: absolute;
   top: 5px;
   left: 0;
-  width: 193px;
+  width: 100%;
   height: 4px;
   border-radius: 2px;
   background: #343d45;

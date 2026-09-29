@@ -30,8 +30,10 @@ plugin enumerates it. Keep the store the only caller.
 ## Seeing it
 
 - `npm run dev` starts the Vite server. `.claude/launch.json` defines `dev` on port 3000, so use
-  the preview tools with that name. The layout is 251 × 205 logical px, scaled ×2 to the
-  502 × 410 panel, with a 130 px physical corner radius.
+  the preview tools with that name. The layout fills the viewport width with fixed-size text and a minimum
+  height of 205 logical px. The preview width selector covers 251 px (2.06),
+  300 px (landscape 2.41), 480 px and fit-window; preview zoom is 2×.
+  Board key 3 is the logical viewport width used by slider hit testing.
 - `npm run preview:panel` writes `build/ui-preview/`.
 - `node --test tests/gea-store.test.mjs` and `npm run check:frontend`.
 - `npm run build:firmware` is the only check of the native lowering. Compilation must keep
