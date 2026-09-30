@@ -1,0 +1,4 @@
+# The target's network component bundle includes esp_peer's IPv6 UDP transport.
+# Keep this consistent with that component while Wi-Fi OTA is enabled. This
+# experiment override does not change the pedal's audio firmware configuration.
+CONFIG_LWIP_IPV6=y
