@@ -52,3 +52,6 @@ c++ -O3 -std=c++20 -ffp-contract=off \
   "$link_gc" -Isrc/audio/nam -Isrc src/audio/nam/nam_a2_full_s3_native.cpp \
   src/audio/processor.cpp tests/processor_controls_test.cpp -o build/processor_controls_test
 build/processor_controls_test assets/models/volum-ampete-4-v30.namb
+
+c++ -std=c++20 -O1 -g -fsanitize=address,undefined tests/speaker_buffer_test.cpp -o build/speaker_buffer_test
+build/speaker_buffer_test

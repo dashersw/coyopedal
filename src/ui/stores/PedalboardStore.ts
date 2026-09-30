@@ -38,6 +38,9 @@ export class PedalboardStore extends Store {
   activeModel = 0
   network = ''
   address = ''
+  speakerEnabled = false
+  speakerAvailable = false
+  speakerStatus = ''
   presets: string[] = []
   // One page of the amp browser, never the whole catalogue: the UI tree holds
   // a few hundred nodes and a row costs about five, so a card full of captures
@@ -70,6 +73,12 @@ export class PedalboardStore extends Store {
   parameterNames: string[] = []
   parameterLabels: string[] = []
   parameterValues: number[] = []
+
+  toggleSpeaker() {
+    if (!this.speakerAvailable) return
+    board.speaker(!this.speakerEnabled)
+    this.sync()
+  }
 
   // A SCALAR is written straight, with no change guard. Every scalar field of a
   // store compiles to a `gea::embedded::ui::Signal<T>`, whose `operator=`
@@ -121,6 +130,9 @@ export class PedalboardStore extends Store {
     this.pendingName = board.label(10, this.deleting ? board.get(57) : this.activePreset)
     this.network = board.label(15, 0)
     this.address = board.label(16, 0)
+    this.speakerEnabled = board.get(80) !== 0
+    this.speakerAvailable = board.get(81) !== 0
+    this.speakerStatus = board.label(21, 0)
     // Every list below is written element by element, and only where the element
     // actually changed.
     //

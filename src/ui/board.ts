@@ -1,3 +1,5 @@
+import { Audio } from '@geastack/core'
+
 // The native compiler resolves these calls through scripts/panel-host-plugin.mjs.
 // The browser preview installs the same contract before mounting the app.
 declare function pbGet(key: number): number
@@ -7,6 +9,11 @@ declare function pbAction(action: number, index: number, value: number): void
 declare function pbPresetName(action: number, text: string): void
 
 export const board = {
+  speaker(enabled: boolean): void {
+    // The public audio binding also tells Gea to include the board codec.
+    Audio.setVolume(enabled ? 100 : 0)
+    pbSet(80, enabled ? 1 : 0)
+  },
   get(key: number): number {
     return pbGet(key)
   },

@@ -26,6 +26,7 @@
 #include "freertos/task.h"
 #include "esp_task_wdt.h"
 #include "nvs.h"
+#include "internal_speaker.h"
 #include "nvs_flash.h"
 
 #include "audio/effects.h"
@@ -842,6 +843,7 @@ extern "C" void gea_app_native_boot(void) {
     // up to say why. Every flag is one-shot, so consume them all before
     // deciding: a leftover maintenance request must not survive to veto the
     // next AUDIO TRY.
+    internal_speaker_init();
     const bool audio_requested = nvs_result == ESP_OK && coyopedal_remote_audio_boot_requested();
     const bool maintenance_requested =
         nvs_result == ESP_OK && coyopedal_remote_maintenance_boot_requested();
@@ -1022,6 +1024,7 @@ extern "C" void gea_app_native_boot(void) {
     } else {
         ESP_LOGW(kTag, "could not pause audio for effect-line promotion");
     }
+    internal_speaker_start();
     // A measurement window confirms the pedal is engaged through the same
     // UI path the footswitch uses. The UI CHECK line it logs is the evidence.
     coyopedal_remote_audio_window_configure();

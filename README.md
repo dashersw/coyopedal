@@ -53,8 +53,8 @@ AMOLED 2.06 is the reference board and the default build/flash target. The
 AMOLED 2.41 and LCD 3.5B/3.5B-C are optional targets; their display dimensions,
 UI scaling, power settings and flash layouts are selected automatically. Screen
 resolutions above are native portrait dimensions; the pedal UI runs in landscape.
-The LCD display, touch gestures and OTA updates have been verified on hardware;
-USB audio performance on that board has not yet been validated.
+The LCD display, touch gestures, OTA updates and simultaneous USB/speaker audio
+have been verified on the LCD 3.5B-C hardware.
 
 A board with no screen runs the same amp through the same DSP at the same 48 kHz — measured on the devkit at 91% and 94% of the 1,333 µs
 block budget across the two cores, with no missed deadlines — and is configured
@@ -87,6 +87,11 @@ switch at the top right bypasses the whole pedal, and **Tuner** opens the tuner.
 
 Tap the preset name to switch, save, rename, delete or create presets. A new
 preset starts from the current sound.
+
+Open **Setup** from the preset screen to enable **Internal speaker** on the
+AMOLED 2.06 or LCD 3.5B/3.5B-C. It starts off and is saved separately from presets.
+When enabled, the speaker plays a mono mix of the processed signal alongside
+the USB interface output. Turning it off leaves USB output running.
 
 On every board, BOOT works as a footswitch: a short press engages or bypasses
 the pedal, and holding it switches between audio and maintenance mode. The

@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "controls.h"
+#include "internal_speaker.h"
 #include "ui/tree_inspection.h"
 
 // The engine's live device pixel ratio (engine/ui/style.cpp). Declared rather
@@ -354,7 +355,7 @@ double pbGet(double key) {
         return frame_time / 1000.0;
     case 15:
         return coyopedal_ui_revision() + network_revision.load(std::memory_order_relaxed) +
-               browse_revision;
+               browse_revision + internal_speaker_revision();
     case 16:
         return !coyopedal_pedal_dsp_bypassed();
     case 17:
@@ -373,6 +374,10 @@ double pbGet(double key) {
         return browse_page_count();
     case 31:
         return browse_depth();
+    case 80:
+        return internal_speaker_enabled();
+    case 81:
+        return internal_speaker_available();
     case 60:
     case 61: {
         coyopedal_tuner_reading_t r{};
@@ -412,6 +417,9 @@ void pbSet(double key, double value) {
         return;
     }
     switch (k) {
+    case 80:
+        internal_speaker_set_enabled(value != 0);
+        break;
     case 1:
         pointer_x = value / pixel_ratio();
         break;
@@ -430,6 +438,8 @@ void pbSet(double key, double value) {
     }
 }
 std::string pbLabel(double kind, double index) {
+    if (static_cast<int>(kind) == 21)
+        return internal_speaker_status();
     const unsigned i = static_cast<unsigned>(index);
     switch (static_cast<int>(kind)) {
     case 0: {

@@ -6,3 +6,7 @@ export function mount(App: new () => Component) {
   if (!root) throw new Error('Missing #app mount point')
   new App().render(root)
 }
+
+export const Audio = {
+  setVolume(_volume: number): void {},
+}

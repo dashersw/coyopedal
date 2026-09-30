@@ -5,9 +5,10 @@
   font-size: 18px;
 }
 
+.speaker-description,
 .maintenance-description {
   position: absolute;
-  top: 122px;
+  top: 117px;
   left: 28px;
   width: calc(100% - 56px);
   text-align: center;
@@ -29,4 +30,8 @@
   top: 96px;
   width: calc(100% - 56px);
   color: #82bca9;
+}
+
+.maintenance-description {
+  top: 183px;
 }

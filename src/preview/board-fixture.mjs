@@ -229,6 +229,8 @@ export function createPanelPreviewStore(storage) {
     load(0)
   }
   function get(k) {
+    if (k === 81) return 1
+    if (k === 80) return storage?.getItem('pedalboard-speaker') === '1' ? 1 : 0
     if (k === 3) return state[3] || 251
     if (k === 60) return tunerReading().voiced ? 1 : 0
     if (k === 61) return tunerReading().cents
@@ -254,6 +256,7 @@ export function createPanelPreviewStore(storage) {
     return state[k] || 0
   }
   function label(k, i) {
+    if (k === 21) return get(80) ? 'Speaker + USB output (preview)' : 'USB output only'
     if (k === 0) return captures[state[12]]
     if (k === 1) return names[i]
     if (k === 2) return captures[i]
@@ -413,5 +416,16 @@ export function createPanelPreviewStore(storage) {
     }
   }
   reset()
-  return { state, get, set: (k, v) => (state[k] = v), label, action, nameEdit, reset }
+  return {
+    state,
+    get,
+    set: (k, v) => {
+      if (k === 80) storage?.setItem('pedalboard-speaker', v ? '1' : '0')
+      else state[k] = v
+    },
+    label,
+    action,
+    nameEdit,
+    reset,
+  }
 }

@@ -56,6 +56,21 @@ rest holds the image's IRAM and static data, FreeRTOS, the DSP stage stacks,
 the USB host's and display's DMA buffers, the effects arena and a few system
 task stacks. In maintenance mode the radios use the space instead.
 
+The optional internal speaker uses a PSRAM worker stack and a 2 KiB PSRAM
+sample queue. Its I2S DMA buffers must remain internal. The app selects
+`GEA_AUDIO_DMA_DESCRIPTORS=3` and `GEA_AUDIO_DMA_FRAMES=128`; the codec's media
+playback defaults of six 240-frame descriptors exhaust the remaining internal
+heap when USB audio and the NAM graph are already running. Check both output
+paths on hardware after changing these values.
+The speaker worker runs on core 0 at priority 18, below USB (20) and DSP stage
+A (19). Its clock-drift interpolation uses single precision so the ESP32-S3
+can execute it in hardware. Speaker drop counters must be checked independently
+of the USB and DSP counters.
+On the LCD 3.5B-C, 64-frame DMA buffers dropped speaker samples despite clean
+USB output. With 128-frame buffers and 16-bit initial codec slots, a 30-second
+run sustained 1,874–1,876 speaker blocks per five seconds with zero steady-state
+speaker drops/underruns or DSP deadline misses. Listening confirmed clean output.
+
 ## The NAM bank arena
 
 S3 data SRAM is organised in 32 KiB banks, and two cores streaming their hottest

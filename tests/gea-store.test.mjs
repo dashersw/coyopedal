@@ -155,3 +155,19 @@ test('sliders map taps and drags across responsive viewport widths', () => {
     assert.equal(values.length, count, 'vertical scrolling must not change a parameter')
   }
 })
+
+test('internal speaker setting is independent of presets and survives reload', () => {
+  assert.equal(store.speakerEnabled, false)
+  store.toggleSpeaker()
+  assert.equal(store.speakerEnabled, true)
+  assert.equal(store.edited, false)
+  store.choosePreset(1)
+  assert.equal(store.speakerEnabled, true)
+  const reloaded = createPanelPreviewStore({
+    getItem: (key) => storage.get(key),
+    setItem: (key, value) => storage.set(key, value),
+  })
+  assert.equal(reloaded.get(80), 1)
+  store.toggleSpeaker()
+  assert.equal(store.speakerEnabled, false)
+})

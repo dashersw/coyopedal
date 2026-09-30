@@ -389,12 +389,15 @@
       "src/native/storage/factory_presets.c",
       "src/native/storage/preset_json.c",
       "src/native/diagnostics/heap_map.c",
-      "src/audio/nam/runtime_allocation_plan.c"
+      "src/audio/nam/runtime_allocation_plan.c",
+      "src/native/drivers/internal_speaker.cpp"
     ],
     "compilerPlugins": [
       "scripts/panel-host-plugin.mjs"
     ],
     "defines": {
+      "GEA_AUDIO_DMA_DESCRIPTORS": 3,
+      "GEA_AUDIO_DMA_FRAMES": 128,
       "GEA_EMBEDDED_LAZY_GRADIENT_LUTS": 1,
       "GEA_EMBEDDED_UI_STATE_EXTERNAL": 1,
       "GEA_EMBEDDED_SHARED_STYLES": 1,

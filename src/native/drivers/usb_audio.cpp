@@ -34,6 +34,7 @@
 #include "board_ui.h"
 #include "uac2_pcm.hpp"
 #include "usb_audio.h"
+#include "internal_speaker.h"
 #include "usb_host_hooks.hpp"
 
 void s3_v1_ui_wake();
@@ -637,6 +638,8 @@ IRAM_ATTR void finish_output_slot(const int slot_index, const bool stereo_output
     if (output_reserved) {
         pack(output.first, 0U, output.first_count);
         pack(output.second, output.first_count, kFrames - output.first_count);
+        internal_speaker_submit(output.first, output.first_count);
+        internal_speaker_submit(output.second, kFrames - output.first_count);
     }
     if (collect_cycles) {
         const std::uint32_t elapsed = esp_cpu_get_cycle_count() - start;
