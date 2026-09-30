@@ -1636,3 +1636,97 @@ The rejected experiment's images and evidence remain archived in the build audit
 Restored firmware SHA-256:
 `c44bf325699c966f235542a0893aa84c998dc017b39e49d70665f1b2e091751e`.
 Source verification: `balls-18-flags-reverted-source-check.json`.
+
+## September 30: package-only release qualification
+
+The reviewed package artifacts use core 0.1.30, engine 0.1.8, elements 0.1.3,
+geatsc-plugin-gea 0.1.11, targets 0.1.84 and CLI 0.1.87. Qualification uses the
+already-published compiler 1.0.19, host 0.1.9 and simulator 0.1.11. Unrelated
+uncommitted RTC, media and compiler development is excluded from these artifacts.
+Every source file in each tarball is taken from the reviewed Git commit; the
+analyzer's JavaScript and declarations are compiled from that same committed
+TypeScript. Artifact hashes and package contents are preserved in
+`build/css-feature-audit/release-packages.json`.
+
+All six artifacts are published. Each registry `dist.integrity` matches the
+original tarball's SHA-512. Clean `npm ci` installations in the pedal and examples
+repositories reproduce every file of those artifacts, with registry lockfile
+URLs and no framework symlinks or local-package dependencies. The pedal retains
+its qualified TypeScript 5.9.3 and other existing tool versions; an unrelated
+TypeScript `latest`/linter peer conflict was resolved without forcing npm.
+
+Package-only checks found and fixed a release defect: the native build looked
+only in the app's own `node_modules` and missed typed Gea sources hoisted to the
+workspace root. Native source resolution now follows Node's package search chain,
+respects nearest-package shadowing, and does not require a public `package.json`
+export. Regression coverage includes root apps, workspace children, web
+subdirectories, missing typed sources and nested dependencies. No compiler
+checkout or local package override is used by either ESP32 qualification build.
+
+### Original Bouncing Balls JSX, AMOLED 1.8
+
+The original source, CSS, font, 64-ball count and display settings pass the
+existing workload fingerprints. The registered 1.8 board is the only board
+flashed. Linked DWARF inspection checks all translation units before flashing.
+The framebuffer readback shows the expected balls and FPS badge.
+
+| Measurement                         | Retained development control | Packaged release candidate |
+| ----------------------------------- | ---------------------------: | -------------------------: |
+| Completed FPS                       |                    67.829196 |                  67.808032 |
+| Mean frame interval                 |                    14.742 ms |                  14.747 ms |
+| p99 interval upper bound            |                    16.500 ms |                  16.500 ms |
+| Maximum interval                    |                    29.724 ms |                  30.909 ms |
+| Intervals above 16.667 ms           |                   18 / 3,600 |                 14 / 3,600 |
+| Base Node                           |                         48 B |                       48 B |
+| ComputedStyle                       |                         32 B |                       32 B |
+| SharedStyleRecord, including style  |                         40 B |                       40 B |
+| NodeRareData                        |                         12 B |                       12 B |
+| TreeState, 512 slots                |                     33,848 B |                   33,848 B |
+| Node-owned heap plus static storage |                     42,416 B |                   42,216 B |
+| Free internal RAM                   |                     85,120 B |                   85,984 B |
+| Free PSRAM                          |                  7,390,348 B |                7,343,256 B |
+| Firmware                            |                  1,765,536 B |                1,798,208 B |
+
+Both samples contain 300 warm-up frames and 3,600 measured completed frames.
+The packaged build passes the unchanged 60 FPS / 19 ms p99 / 35 ms maximum gate
+without device faults. The observed throughput difference is -0.031%; this is
+one qualification comparison, not proof that every frame takes less than
+16.667 ms. Node-owned accounting includes shared records and persistent layout
+storage; the computed-style row is already included in its shared record.
+
+Replacing the development toolchain with the published compiler and host changes
+whole-program size and free heap: the image is 32,672 B larger, free PSRAM is
+47,092 B lower, and free internal RAM is 864 B higher. Those whole-program deltas
+must not be presented as an additional style-packing improvement or added to the
+200 B reduction in measured node-owned storage. The rejected flag-array packing
+remains reverted.
+
+Artifacts are named `balls-18-release-resolver-*`. The exact qualified image is
+1,798,208 B with SHA-256
+`c20d2c0c89ea1c3e89978faed60093e766c09b7bd36756a630123c5fb214cd51`.
+
+### Pedal and web validation
+
+The clean pedal candidate builds with the normal Gea CLI and the installed
+packages, with every development override removed. Its binary is 2,958,864 B;
+all linked translation units agree on a 48 B Node, 80 B ComputedStyle, 88 B
+SharedStyleRecord and 64 B NodeRareData. These style and rare-record sizes belong
+to the pedal's richer feature set; the balls app's narrower sizes are not promised
+for every application. Shared styles are enabled in the pedal manifest.
+
+Compile inputs contain no Geastack checkout paths, and sdkconfig retains the
+required 32 KiB S3 data cache. The pedal's lint/type/format checks, host tests,
+browser build and WASM build pass. Targeted release checks pass: 714 analyzer
+cases, 58 CLI cases, 49 frame-gate cases, eight target checks and the analyzer
+architecture ratchet. The package resolver regression also passes.
+
+Authenticated maintenance discovery received no pedal response, so this release
+qualification does not supply a fresh all-effects audio deadline measurement.
+The display benchmark is not an audio timing measurement.
+
+The subsequent firmware rebuild after clean registry `npm ci` also passes and
+is byte-identical to the qualified pedal candidate: 2,958,864 B, SHA-256
+`b8989227939c4070b512fde081eecb9d9ef05c89669b1050562c064bdea12d52`.
+Its linked-layout census agrees with the sizes above. Registry-installed browser
+and WASM rebuilds pass as well. Final provenance and inputs are retained as
+`release-registry-pedal-*`; the firmware for deployment is `build/pedalboard.bin`.
