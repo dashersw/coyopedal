@@ -42,15 +42,21 @@ it, and nothing to install.
 
 ### Supported boards
 
-| Board                                           | Alias       | Flash | What it has                                                                 | How you control it                                             |
-| ----------------------------------------------- | ----------- | ----- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Waveshare ESP32-S3-Touch-AMOLED-2.06            | `amoled`    | 32 MB | ESP32-S3R8, 8 MB PSRAM, 410 × 502 AMOLED, touch, AXP2101 PMIC, microSD slot | Touchscreen; BOOT: tap to bypass, hold 1.5 s for maintenance   |
-| ESP32-S3-DevKitC-1 N16R8, and bare S3R8 modules | `s3-devkit` | 16 MB | ESP32-S3R8, 8 MB PSRAM, no panel, no PMIC, no SD slot                       | BOOT: tap to engage or bypass, hold 1.5 s for maintenance mode |
+| Board                                           | Alias        | Flash | What it has                                                                 | How you control it                                             |
+| ----------------------------------------------- | ------------ | ----- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Waveshare ESP32-S3-Touch-AMOLED-2.06            | `amoled`     | 32 MB | ESP32-S3R8, 8 MB PSRAM, 410 × 502 AMOLED, touch, AXP2101 PMIC, microSD slot | Touchscreen; BOOT: tap to bypass, hold 1.5 s for maintenance   |
+| Waveshare ESP32-S3-Touch-AMOLED-2.41 (V1)       | `amoled-241` | 16 MB | 8 MB PSRAM, 450 × 600 AMOLED, touch, microSD slot                           | Touchscreen; BOOT: tap to bypass, hold 1.5 s for maintenance   |
+| Waveshare ESP32-S3-Touch-LCD-3.5B / 3.5B-C      | `lcd-35b`    | 16 MB | 8 MB PSRAM, 320 × 480 IPS LCD, capacitive touch, AXP2101 PMIC, microSD slot | Touchscreen; BOOT: tap to bypass, hold 1.5 s for maintenance   |
+| ESP32-S3-DevKitC-1 N16R8, and bare S3R8 modules | `s3-devkit`  | 16 MB | ESP32-S3R8, 8 MB PSRAM, no panel, no PMIC, no SD slot                       | BOOT: tap to engage or bypass, hold 1.5 s for maintenance mode |
 
-The AMOLED board is the reference. It is what the factory presets, the browser
-build and the screenshots are made against, and the panel-specific parts of the
-firmware exist for it. A board with no screen runs the same amp through the same
-DSP at the same 48 kHz — measured on the devkit at 91% and 94% of the 1,333 µs
+AMOLED 2.06 is the reference board and the default build/flash target. The
+AMOLED 2.41 and LCD 3.5B/3.5B-C are optional targets; their display dimensions,
+UI scaling, power settings and flash layouts are selected automatically. Screen
+resolutions above are native portrait dimensions; the pedal UI runs in landscape.
+The LCD display, touch gestures and OTA updates have been verified on hardware;
+USB audio performance on that board has not yet been validated.
+
+A board with no screen runs the same amp through the same DSP at the same 48 kHz — measured on the devkit at 91% and 94% of the 1,333 µs
 block budget across the two cores, with no missed deadlines — and is configured
 over the maintenance API instead of by hand.
 
@@ -195,8 +201,10 @@ The Gea CLI installs everything else, including ESP-IDF.
    detected USB device. The CLI identifies the board by its USB serial number,
    so it does not matter which port it shows up on. The OTA host is optional.
 
-   For a board without a screen, see [Another board](#another-board) below; the
-   rest of this section is the same.
+   For an optional display board, choose **Waveshare ESP32-S3 Touch AMOLED
+   2.41 (V1)** (alias `amoled-241`) or **Waveshare ESP32-S3 Touch LCD 3.5B /
+   3.5B-C** (alias `lcd-35b`) instead. Use the matching alias when building and
+   flashing. For a board without a screen, see [Another board](#another-board).
 
 6. Check the toolchain and the board:
 
@@ -222,13 +230,24 @@ gea flash --board amoled
 
 Add `--dry-run` to see what would be written without flashing.
 `npm run build:firmware` and `npm run flash:firmware` run the same two commands.
-`--board s3-devkit` builds the same firmware for the headless board; the npm
-scripts are the `amoled` shorthand.
+The npm scripts default to AMOLED 2.06. Override the board for an optional panel:
 
-On the AMOLED the flash is laid out as two 8 MB OTA slots, a factory-model
+```bash
+npm run build:firmware -- --board lcd-35b
+npm run flash:firmware -- --board lcd-35b
+```
+
+Use `amoled-241` instead for AMOLED 2.41, or `s3-devkit` for the headless board.
+Install dependencies with `npm ci`; all supported targets come from the published
+Geastack packages, with no local checkout overrides. Once a board is in
+maintenance mode, use [Wi-Fi OTA](#maintenance-mode-and-ota-updates) instead of
+USB flashing. Build for that board before uploading `build/pedalboard.bin`.
+
+On AMOLED 2.06 the flash is laid out as two 8 MB OTA slots, a factory-model
 partition, a factory-preset partition and a partition for imported models. Saved
 presets live in NVS, which flashing does not erase. A board with a different
-flash size gets its own layout — see below.
+flash size gets its own layout: the 16 MB boards listed above use two 4 MB OTA
+slots. These layouts are already included in the manifest.
 
 ### Another board
 
@@ -263,8 +282,10 @@ To bring a new board up:
 4. `gea flash --board <alias> --monitor`.
 
 One rule worth knowing when a board misbehaves at compile time: the app's own
-`gea.defines` win over the board's. The pedal declares its display dimensions,
-so a board that also declares a canvas size does not get to redefine them.
+`gea.defines` win over the target's defaults. App overrides under
+`gea.targets.esp32.boards.<target-id>.defines` replace those root values for
+that target, and `cssDevicePixelRatio` in the same entry sets its UI scale.
+The optional panels already have entries; changing boards needs no manifest edit.
 
 ### Checks and tests
 
@@ -324,7 +345,7 @@ are not among them. Cache-Control is per-object and the script sets it.
 Maintenance mode unloads the audio graph and starts Wi-Fi and BLE. Enter it by
 tapping the preset name, then **Setup**, then **Maintenance mode**, or with the
 board's BOOT button — hold it until the screen says "Please wait", about 1.5
-seconds, on either board. Hold it again, or choose **Return to pedalboard**, to
+seconds, on any supported board. Hold it again, or choose **Return to pedalboard**, to
 reboot into audio mode with the radios off. The pedal always starts in audio
 mode, unless the previous boot crashed.
 

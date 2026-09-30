@@ -21,7 +21,10 @@ In the browser, Vite builds it against the Gea web runtime for the preview.
 
 The layout fills its viewport width, with fixed-size text and controls and a minimum
 height of 205 logical pixels. At 2×, the 2.06 panel uses 251 × 205 logical pixels
-and the landscape 2.41 panel uses 300 × 225. Lists, sliders, the keyboard and
+and the landscape 2.41 panel uses 300 × 225. The LCD 3.5B/3.5B-C uses a
+480 × 320 landscape framebuffer at 1.5× (about 320 × 213 logical pixels).
+The app manifest selects dimensions and scale by target; AMOLED 2.06 remains
+the default. Lists, sliders, the keyboard and
 tuner expand horizontally; the browser preview has a screen-width selector.
 Board key 3 reports the live logical viewport width so slider touch mapping
 uses the same 29-pixel side insets as the CSS. The UI font is `assets/fonts/Saira-Bold-Pedal.otf`: Saira Bold with the UI's
