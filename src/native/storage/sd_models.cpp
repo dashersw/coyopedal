@@ -16,7 +16,7 @@
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
-#if defined(GEA_EMBEDDED_RM690B0_PANEL)
+#if defined(GEA_BOARD_HAS_SDMMC) || defined(GEA_EMBEDDED_RM690B0_PANEL)
 #include "board.h"
 #endif
 
@@ -39,7 +39,7 @@ bool mount() {
     host.max_freq_khz = SDMMC_FREQ_DEFAULT;
     sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
     slot.width = 1;
-#if defined(GEA_EMBEDDED_RM690B0_PANEL)
+#if defined(GEA_BOARD_HAS_SDMMC) || defined(GEA_EMBEDDED_RM690B0_PANEL)
     slot.clk = gea::platform::board::storage.clk;
     slot.cmd = gea::platform::board::storage.cmd;
     slot.d0 = gea::platform::board::storage.data0;
