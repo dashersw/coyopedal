@@ -34,12 +34,17 @@ def main():
         **package["gea"].get("defines", {}),
         "GEA_EMBEDDED_FRAME_BENCHMARK": 2,
         "GEA_EMBEDDED_FRAME_SCHEDULER_FPS_LOG": 0,
-        "GEA_EMBEDDED_SHARED_STYLES": args.shared,
     }
-    env = os.environ.copy()
+    package["gea"]["defines"].pop("GEA_EMBEDDED_SHARED_STYLES", None)
+    targets = package["gea"].setdefault("targets", {})
+    if not isinstance(targets.get("esp32"), dict):
+        targets["esp32"] = {}
+    build = targets["esp32"].setdefault("build", {})
+    build.setdefault("ui", {})["styleStorage"] = "shared" if args.shared else "inline"
+    env = {
+        key: value for key, value in os.environ.items() if not key.startswith(("GEA_", "GEATSC"))
+    }
     overrides = {} if args.installed else inputs["overrides"]
-    if args.installed:
-        env = {key: value for key, value in env.items() if not key.startswith(("GEA_", "GEATSC"))}
     env.update(overrides)
     env.update(CCACHE_DISABLE="1", TMPDIR=str(AUDIT), GEA_IDF_JOBS="2")
     command = [
@@ -89,16 +94,21 @@ def main():
         if args.installed
         else overrides,
         "defines": package["gea"]["defines"],
+        "build": build,
     }
     (AUDIT / (args.label + "-build-inputs.json")).write_text(json.dumps(metadata, indent=2) + "\n")
+    benchmark_manifest = (json.dumps(package, indent=2) + "\n").encode()
     try:
-        manifest.write_text(json.dumps(package, indent=2) + "\n")
+        manifest.write_bytes(benchmark_manifest)
         with (AUDIT / (args.label + "-build.log")).open("w") as log:
             result = subprocess.run(
                 command, cwd=examples, env=env, stdout=log, stderr=subprocess.STDOUT
             )
     finally:
-        manifest.write_bytes(original)
+        if manifest.read_bytes() == benchmark_manifest:
+            manifest.write_bytes(original)
+        else:
+            print("Manifest changed during the build; preserving the current edits.")
     print(f"Gea build exit: {result.returncode}")
     raise SystemExit(result.returncode)
 

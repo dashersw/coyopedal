@@ -9,7 +9,9 @@
     "entry": "main.tsx",
     "runtime": "gea",
     "targets": {
-      "web": true
+      "web": {
+        "cssDevicePixelRatio": 4
+      }
     },
     "compilerPlugins": [
       "../scripts/panel-host-plugin.mjs"

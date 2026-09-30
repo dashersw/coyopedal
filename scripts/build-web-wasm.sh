@@ -47,13 +47,16 @@ fi
 # documented override. It must name the shim module WITHOUT its extension: the
 # canvas interop is loaded by swapping the "host-shims" suffix for "cpp-ir".
 #
-# GEA_WEB_DEVICE_PIXEL_RATIO is the ratio the font generator bakes atlases for,
+# The web manifest states the ratio the font generator bakes atlases for,
 # and it has to be the ratio the page actually renders at: web/index.html runs
 # the engine at 2 x OVERSAMPLE = 4, twice the board's own 2, so the layout is
 # supersampled. Baking for 2 left every size an inexact request at run time,
 # answered by the nearest atlas — which for the 22px preset name is the tuner's
 # 52px one, narrowed to the twenty characters a note name needs, so the name
 # drew as `?`. Keep this equal to web/index.html DEVICE_PIXEL_RATIO.
+mkdir -p "$BUILD"
+(cd "$REPO/web" && node "$PACKAGES/cli/bin/gea.mjs" config --target web) > "$BUILD/gea-build-config.json"
+
 GEATSC2_GEA_PLUGIN="$PACKAGES/geatsc-plugin-gea/dist/host-shims" \
   GEA_APPS_ROOT="$REPO" \
   GEA_EXTRA_APP_DIRS="$REPO/web" \
@@ -67,7 +70,7 @@ GEATSC2_GEA_PLUGIN="$PACKAGES/geatsc-plugin-gea/dist/host-shims" \
   GEA_WEB_GENERATED_ROOT="$BUILD/generated" \
   GEA_WEB_DIST_ROOT="$BUILD/dist" \
   GEA_WEB_PUBLIC_ROOT="$BUILD/public" \
-  GEA_WEB_DEVICE_PIXEL_RATIO=4 \
+  GEA_BUILD_CONFIG_JSON="$BUILD/gea-build-config.json" \
   bash "$SIMULATOR/targets/web/build-web.sh" nam-pedalboard-web
 
 # The two factory images the page installs into the board, packed exactly as the
