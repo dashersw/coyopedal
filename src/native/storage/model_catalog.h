@@ -29,7 +29,8 @@ typedef struct {
     // Path under the card's /nam directory, folders included: the browser
     // shows the card's own tree.
     char sd_filename[128];
-    bool user_model; // resolves the separate user partition on S3
+    bool user_model;       // resolves the separate user partition on S3
+    bool includes_cabinet; // factory capture metadata; no additional record padding
 } coyopedal_model_t;
 
 extern coyopedal_model_t coyopedal_models[COYOPEDAL_MODEL_MAX];
@@ -65,6 +66,9 @@ void coyopedal_models_rescan(void);
 // Index of the profile currently loaded, or COYOPEDAL_MODEL_NONE if the last
 // load failed and the processor is passing through.
 unsigned coyopedal_active_model(void);
+// True only when the playing capture explicitly declares a baked-in cabinet.
+// Survives catalogue rescans because its weights keep playing.
+bool coyopedal_active_capture_includes_cabinet(void);
 const char* coyopedal_last_model_error(void);
 
 #define COYOPEDAL_MODEL_NONE 0xFFFFFFFFU

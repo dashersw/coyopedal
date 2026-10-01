@@ -2,6 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p build
+c++ -std=c++20 -O1 -g -fsanitize=address,undefined -pthread -Isrc \
+  src/audio/cabinet_ir.cpp src/audio/ir_wav.cpp tests/cabinet_ir_test.cpp -o build/cabinet_ir_test
+build/cabinet_ir_test
 for spec in 'uac2_test hdx-dma4-configuration' 'xtone_test xtone-pro-1.1.0-configuration'; do
   read -r test fixture <<< "$spec"
   c++ -std=c++20 -O1 -g -fsanitize=address,undefined -Isrc "tests/usb/$test.cpp" -o "build/$test"
@@ -44,6 +47,7 @@ c++ -O3 -std=c++20 -ffp-contract=off -fcx-limited-range \
   "$link_gc" -Isrc/audio/nam -Isrc src/audio/nam/nam_a2_full_s3_native.cpp \
   tests/nam/prepared_model_test.cpp -o build/prepared_model_test
 build/prepared_model_test assets/models/volum-ampete-4-v30.namb
+build/prepared_model_test assets/models/volum-ampete-4-amp.namb
 
 c++ -std=c++20 -O1 -g -fsanitize=address,undefined -Isrc -Itests src/audio/effects.cpp tests/effects_control_test.cpp -o build/effects_control_test
 build/effects_control_test

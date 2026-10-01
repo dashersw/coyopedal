@@ -1,5 +1,6 @@
 #include "remote_service.h"
 #include "model_import.h"
+#include "cabinet_files.h"
 
 #if __has_include("remote_config.h")
 #include "remote_config.h"
@@ -21,6 +22,7 @@
 #include <cstring>
 
 #include "display.h"
+#include "services/app_state.h"
 #include "esp_app_desc.h"
 #include "esp_attr.h"
 #include "esp_err.h"
@@ -54,6 +56,7 @@
 #include "control.h"
 #include "events.h"
 #include "audio/effects.h"
+#include "audio/cabinet.h"
 #include "audio/usb_frame_processor.h"
 #include "heap_map.h"
 
@@ -70,6 +73,7 @@ void s3_v1_ui_wake();
 // The panel's own JSX-facing setter (src/native/ui/board_bridge.cpp). Key 4 is
 // the screen index, which is what a tap that navigates ends up writing.
 void pbSet(double key, double value);
+extern "C" void coyopedal_ui_touch();
 
 extern "C" {
 // Kept by the USB host controller interrupt (third_party/usb/src/hcd_dwc.c).
@@ -420,6 +424,10 @@ constexpr std::uint32_t kAudioWindowSwapCores = 16U;
 // run - and it goes through coyopedal_ui_control_set_param, the same call the
 // panel's touch handlers make, so it dirties exactly the regions a drag does.
 constexpr std::uint32_t kAudioWindowUiSoak = 32U;
+constexpr std::uint32_t kAudioWindowCabinet = 64U;
+constexpr std::uint32_t kAudioWindowCabinetFile = 128U;
+constexpr unsigned kAudioWindowCabinetShift = 24U;
+constexpr std::uint32_t kAudioWindowSignal = 1U << 30;
 constexpr unsigned kAudioWindowMaskShift = 8U;
 constexpr unsigned kAudioWindowModelShift = 16U;
 RTC_NOINIT_ATTR volatile std::uint32_t g_audio_window_flags;
@@ -430,6 +438,10 @@ std::uint8_t g_audio_window_model{};
 bool g_audio_window_no_ui{};
 bool g_audio_window_swap_cores{};
 bool g_audio_window_ui_soak{};
+bool g_audio_window_cabinet{};
+bool g_audio_window_cabinet_file{};
+bool g_audio_window_signal{};
+std::uint8_t g_audio_window_cabinet_index{};
 // Where the window started, so its accounting covers only the configured run.
 std::uint64_t g_audio_window_start_frames{};
 std::uint64_t g_audio_window_start_silent{};
@@ -1090,6 +1102,47 @@ esp_err_t status_handler(httpd_req_t* const request) {
     return ESP_OK;
 }
 
+esp_err_t screen_handler(httpd_req_t* const request) {
+    if (!authorized(request))
+        return ESP_OK;
+#if defined(GEA_EMBEDDED_NO_DISPLAY) && GEA_EMBEDDED_NO_DISPLAY
+    httpd_resp_send_err(request, HTTPD_404_NOT_FOUND, "no display");
+#else
+    using gea::framework::services::AppState;
+    constexpr int capacity = gea::platform::display::kWidth * gea::platform::display::kHeight;
+    auto* const pixels = static_cast<std::uint16_t*>(
+        heap_caps_malloc(capacity * sizeof(std::uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (pixels == nullptr) {
+        httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "snapshot unavailable");
+        return ESP_OK;
+    }
+    int width = 0;
+    int height = 0;
+    // Copy the live framebuffer, rather than repainting the retained commands:
+    // repainting would hide a rasterizer defect in the pixels on the panel.
+    AppState::lock();
+    const bool copied = gea::platform::display::Display::copySnapshotRgb565(pixels, capacity,
+                                                                            &width, &height, true);
+    AppState::unlock();
+    if (!copied || width <= 0 || height <= 0 || width * height > capacity) {
+        heap_caps_free(pixels);
+        httpd_resp_send_err(request, HTTPD_500_INTERNAL_SERVER_ERROR, "snapshot unavailable");
+        return ESP_OK;
+    }
+    char dimensions[32];
+    std::snprintf(dimensions, sizeof dimensions, "%dx%d", width, height);
+    httpd_resp_set_type(request, "application/octet-stream");
+    httpd_resp_set_hdr(request, "X-Pixel-Format", "RGB565-LE");
+    httpd_resp_set_hdr(request, "X-Display-Size", dimensions);
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    const esp_err_t result = httpd_resp_send(request, reinterpret_cast<const char*>(pixels),
+                                             width * height * sizeof(std::uint16_t));
+    heap_caps_free(pixels);
+    return result;
+#endif
+    return ESP_OK;
+}
+
 std::uint64_t query_since(httpd_req_t* const request) {
     char query[64]{};
     char value[32]{};
@@ -1452,6 +1505,19 @@ esp_err_t command_handler(httpd_req_t* const request) {
     httpd_resp_set_type(request, "text/plain; charset=utf-8");
     if (std::strcmp(command, "PING") == 0) {
         httpd_resp_sendstr(request, "PONG\n");
+    } else if (std::strncmp(command, "UI SCREEN ", 10) == 0) {
+        char* end = nullptr;
+        const long screen = std::strtol(command + 10, &end, 10);
+        if (end == command + 10 || *end != '\0' || screen < 0 || screen > 10 ||
+            coyopedal_remote_mode_busy()) {
+            httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "invalid screen or mode busy");
+            return ESP_OK;
+        }
+        gea::framework::services::AppState::lock();
+        pbSet(4, screen);
+        coyopedal_ui_touch();
+        gea::framework::services::AppState::unlock();
+        httpd_resp_sendstr(request, "OK screen selected\n");
     } else if (std::strcmp(command, "UI STATS") == 0) {
 #if defined(GEA_EMBEDDED_NO_DISPLAY) && GEA_EMBEDDED_NO_DISPLAY
         httpd_resp_sendstr(request, "OK no display on this board; nothing renders\n");
@@ -1560,9 +1626,28 @@ esp_err_t command_handler(httpd_req_t* const request) {
             window_flags |= kAudioWindowUiSoak;
             end += 7;
         }
-        if (end == command + 10 || *end != '\0' || seconds < 5UL || seconds > 120UL) {
-            httpd_resp_sendstr(request, "ERR AUDIO TRY <5..120 seconds> [ENGAGE] [MASK <0..63>] "
-                                        "[MODEL <library-index>] [NOUI] [SWAP] [UISOAK]\n");
+        if (std::strncmp(end, " IR", 3) == 0) {
+            window_flags |= kAudioWindowCabinet;
+            end += 3;
+            if (*end == ' ') {
+                char* ir_end{};
+                const unsigned long index = std::strtoul(end + 1, &ir_end, 10);
+                if (ir_end != end + 1 && index < 64) {
+                    window_flags |= kAudioWindowCabinetFile |
+                                    (static_cast<std::uint32_t>(index) << kAudioWindowCabinetShift);
+                    end = ir_end;
+                }
+            }
+        }
+        if (std::strncmp(end, " SIGNAL", 7) == 0) {
+            window_flags |= kAudioWindowSignal;
+            end += 7;
+        }
+        if (end == command + 10 || *end != '\0' || seconds < 5UL || seconds > 300UL) {
+            httpd_resp_sendstr(
+                request,
+                "ERR AUDIO TRY <5..300 seconds> [ENGAGE] [MASK <0..63>] "
+                "[MODEL <library-index>] [NOUI] [SWAP] [UISOAK] [IR [file-index]] [SIGNAL]\n");
         } else if (!select_exclusive_audio_boot(true)) {
             httpd_resp_sendstr(request, "ERR could not request the audio boot\n");
         } else {
@@ -1697,16 +1782,17 @@ esp_err_t command_handler(httpd_req_t* const request) {
             httpd_resp_sendstr(request, "OK model loaded\n");
         }
     } else if (std::strcmp(command, "HELP") == 0) {
-        httpd_resp_sendstr(request, "PING\nSTATUS\nAUDIO STATS\nAUDIO MODE\n"
-                                    "AUDIO TRY <5..120 seconds> [ENGAGE] [MASK <0..63>] "
-                                    "[MODEL <library-index>] [NOUI] [SWAP] [UISOAK]\n"
-                                    "HEAP MAP\nUI STATS\nUI FLUSH\n"
-                                    "EFFECT MASK <0..63>\n"
-                                    "EFFECT PROFILE <1..60 seconds>\nEFFECT PROFILE RESULT\n"
-                                    "EFFECT SOAK <1..60 seconds>\n"
-                                    "PRESET <library-index>\nPRESET STATE TEST\n"
-                                    "MODEL <library-index>\n"
-                                    "LOGS CLEAR\nREBOOT\n");
+        httpd_resp_sendstr(
+            request, "PING\nSTATUS\nAUDIO STATS\nAUDIO MODE\n"
+                     "AUDIO TRY <5..300 seconds> [ENGAGE] [MASK <0..63>] "
+                     "[MODEL <library-index>] [NOUI] [SWAP] [UISOAK] [IR [file-index]] [SIGNAL]\n"
+                     "HEAP MAP\nUI SCREEN <0..10>\nUI STATS\nUI FLUSH\n"
+                     "EFFECT MASK <0..63>\n"
+                     "EFFECT PROFILE <1..60 seconds>\nEFFECT PROFILE RESULT\n"
+                     "EFFECT SOAK <1..60 seconds>\n"
+                     "PRESET <library-index>\nPRESET STATE TEST\n"
+                     "MODEL <library-index>\n"
+                     "LOGS CLEAR\nREBOOT\n");
     } else {
         httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "unknown command");
     }
@@ -1854,6 +1940,16 @@ esp_err_t model_download_handler(httpd_req_t* r) {
     return coyopedal_model_download(r);
 }
 
+esp_err_t ir_upload_handler(httpd_req_t* r) {
+    return authorized(r) ? pedalboard_ir_upload(r) : ESP_OK;
+}
+esp_err_t ir_download_handler(httpd_req_t* r) {
+    return authorized(r) ? pedalboard_ir_download(r) : ESP_OK;
+}
+esp_err_t ir_list_handler(httpd_req_t* r) {
+    return authorized(r) ? pedalboard_ir_list(r) : ESP_OK;
+}
+
 bool register_handler(const char* const uri, const httpd_method_t method,
                       esp_err_t (*handler)(httpd_req_t*)) {
     httpd_uri_t descriptor{};
@@ -1888,11 +1984,15 @@ bool start_http_server() {
     }
     const bool base_ready =
         register_handler("/v1/status", HTTP_GET, status_handler) &&
+        register_handler("/v1/screen", HTTP_GET, screen_handler) &&
         register_handler("/v1/logs", HTTP_GET, logs_handler) &&
         register_handler("/v1/command", HTTP_POST, command_handler) &&
         register_handler("/v1/ota", HTTP_POST, ota_handler) &&
         register_handler("/v1/models/import", HTTP_POST, model_import_handler) &&
-        register_handler("/v1/models/download", HTTP_GET, model_download_handler);
+        register_handler("/v1/models/download", HTTP_GET, model_download_handler) &&
+        register_handler("/v1/ir/upload", HTTP_POST, ir_upload_handler) &&
+        register_handler("/v1/ir/download", HTTP_GET, ir_download_handler) &&
+        register_handler("/v1/ir", HTTP_GET, ir_list_handler);
     return base_ready;
 }
 
@@ -2277,6 +2377,17 @@ void coyopedal_remote_arm_audio_window() {
     g_audio_window_no_ui = (g_audio_window_flags & kAudioWindowNoUi) != 0U;
     g_audio_window_swap_cores = (g_audio_window_flags & kAudioWindowSwapCores) != 0U;
     g_audio_window_ui_soak = (g_audio_window_flags & kAudioWindowUiSoak) != 0U;
+    g_audio_window_cabinet = (g_audio_window_flags & kAudioWindowCabinet) != 0U;
+    g_audio_window_cabinet_file = (g_audio_window_flags & kAudioWindowCabinetFile) != 0U;
+    g_audio_window_cabinet_index =
+        static_cast<std::uint8_t>((g_audio_window_flags >> kAudioWindowCabinetShift) & 63U);
+    g_audio_window_signal = (g_audio_window_flags & kAudioWindowSignal) != 0U;
+    if (g_audio_window_signal) {
+        if (usb_audio_set_diagnostic_input(true))
+            ESP_LOGW(kTag, "audio window source: generated guitar-like plucks");
+        else
+            ESP_LOGE(kTag, "audio window source: could not prepare diagnostic signal");
+    }
     usb_audio_swap_stage_cores(g_audio_window_swap_cores);
     g_audio_window_mask = static_cast<std::uint8_t>(g_audio_window_flags >> kAudioWindowMaskShift);
     g_audio_window_model_requested = (g_audio_window_flags & kAudioWindowModel) != 0U;
@@ -2285,7 +2396,7 @@ void coyopedal_remote_arm_audio_window() {
     // One shot. A second audio boot without a fresh AUDIO TRY stays in audio.
     g_audio_window_magic = 0U;
     g_audio_window_flags = 0U;
-    if (seconds < 5U || seconds > 120U) {
+    if (seconds < 5U || seconds > 300U) {
         return;
     }
     const esp_timer_create_args_t args{.callback = audio_window_expired,
@@ -2488,6 +2599,25 @@ void audio_window_ui_soak_task(void*) {
 } // namespace
 
 void coyopedal_remote_audio_window_configure() {
+    if (g_audio_window_timer != nullptr) {
+        char cabinet_error[64]{};
+        bool cabinet_ok{};
+        if (g_audio_window_cabinet_file) {
+            pedalboard_cabinet_scan();
+            coyopedal_cabinet_setting_t setting{};
+            setting.enabled = true;
+            std::snprintf(setting.path, sizeof setting.path, "%s",
+                          pedalboard_cabinet_path(g_audio_window_cabinet_index));
+            cabinet_ok = pedalboard_cabinet_apply(&setting, cabinet_error, sizeof cabinet_error);
+        } else {
+            cabinet_ok =
+                g_audio_window_cabinet
+                    ? pedalboard_cabinet_benchmark(cabinet_error, sizeof cabinet_error)
+                    : pedalboard_cabinet_enable(false, cabinet_error, sizeof cabinet_error);
+        }
+        if (!cabinet_ok)
+            ESP_LOGE(kTag, "audio window cabinet: %s", cabinet_error);
+    }
     if (g_audio_window_engage && !s3_v1_ui_mode(7)) {
         ESP_LOGE(kTag, "audio window: could not engage the pedal");
     }
@@ -2509,16 +2639,18 @@ void coyopedal_remote_audio_window_configure() {
         }
     }
     if (g_audio_window_engage || g_audio_window_mask_requested || g_audio_window_model_requested ||
-        g_audio_window_no_ui) {
+        g_audio_window_no_ui || g_audio_window_cabinet) {
         unsigned mask = 0U;
         for (unsigned block = 0; block < COYOPEDAL_FX_BLOCK_COUNT; ++block)
             if (coyopedal_fx_enabled(static_cast<coyopedal_fx_block_t>(block)))
                 mask |= 1U << block;
-        ESP_LOGW(kTag, "audio window configured: engaged=%u amp=%u mask=%u ui=%s cores=%s",
+        ESP_LOGW(kTag,
+                 "audio window configured: engaged=%u amp=%u mask=%u ui=%s cores=%s cabinet=%u",
                  coyopedal_pedal_dsp_pedal_bypassed() ? 0U : 1U,
                  coyopedal_pedal_dsp_bypassed() ? 0U : 1U, mask,
                  g_audio_window_no_ui ? "suspending" : "running",
-                 g_audio_window_swap_cores ? "swapped" : "normal");
+                 g_audio_window_swap_cores ? "swapped" : "normal",
+                 pedalboard_cabinet_enabled() ? 1U : 0U);
     }
     // Start the window's own accounting here: blocks, USB interrupt time and
     // per-task run time from now to the expiry, not from the boot.

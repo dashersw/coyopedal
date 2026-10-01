@@ -6,8 +6,9 @@
 extern "C" {
 #endif
 void pedalboard_sd_models_scan(void);
+bool pedalboard_sd_ready(void);
 bool pedalboard_sd_model_read(const coyopedal_model_t* model, unsigned char* out, size_t capacity,
-                              char* error, size_t error_capacity);
+                              char* error, size_t error_capacity, bool* includes_cabinet);
 #ifdef __cplusplus
 }
 #endif

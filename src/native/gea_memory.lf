@@ -37,3 +37,11 @@ entries:
 archive: libmain.a
 entries:
     frame_scheduler (pedalboard_rtc_fast)
+
+# The UI-state fragment moves display.cpp's general bookkeeping to PSRAM.
+# Its optional static flush pool is a DMA buffer, so it must outrank that
+# object-level mapping and remain in ordinary internal DRAM.
+[mapping:pedalboard_display_flush_dma]
+archive: libmain.a
+entries:
+    display:_ZN3gea8platform5esp327display11g_flushPoolE (default)

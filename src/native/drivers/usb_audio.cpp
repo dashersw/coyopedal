@@ -29,6 +29,7 @@
 #include <new>
 
 #include "audio/effects.h"
+#include "audio/cabinet.h"
 #include "audio/processor.hpp"
 #include "audio/tuner.h"
 #include "board_ui.h"
@@ -361,7 +362,7 @@ float peak_from_bits(const std::atomic<std::uint32_t>& source) {
     return peak;
 }
 
-void record_peak(std::atomic<std::uint32_t>& target, const float peak) {
+IRAM_ATTR void record_peak(std::atomic<std::uint32_t>& target, const float peak) {
     std::uint32_t peak_bits{};
     std::memcpy(&peak_bits, &peak, sizeof peak_bits);
     std::uint32_t observed = target.load(std::memory_order_relaxed);
@@ -484,6 +485,8 @@ struct PipelineSlot {
     unsigned effect_mask{};
     bool chain{};
     bool amp{};
+    bool cabinet{};
+    std::uint8_t cabinet_cursor{};
     bool delay{};
     bool reverb{};
     std::uint32_t stage_a_cycles{};
@@ -549,7 +552,7 @@ StaticTask_t stage_b_tcb{};
 alignas(16) StackType_t stage_a_stack[kDspTaskStackBytes]{};
 alignas(16) StackType_t stage_b_stack[kDspTaskStackBytes]{};
 
-bool acquire_mask_slot(std::atomic<std::uint32_t>& mask, int& slot_index) noexcept {
+IRAM_ATTR bool acquire_mask_slot(std::atomic<std::uint32_t>& mask, int& slot_index) noexcept {
     std::uint32_t available = mask.load(std::memory_order_acquire);
     while (available != 0U) {
         const std::uint32_t bit = available & (0U - available);
@@ -595,19 +598,22 @@ IRAM_ATTR void finish_output_slot(const int slot_index, const bool stereo_output
     const std::uint32_t start = collect_cycles ? esp_cpu_get_cycle_count() : 0U;
     if (capture_output_levels.load(std::memory_order_relaxed)) {
         float peak = 0.0F;
-        std::uint64_t clipped = 0U;
+        // At most two channels times one 64-frame block; count in one word.
+        std::uint32_t clipped = 0U;
         for (std::size_t index = 0; index < kFrames; ++index) {
-            const float left = slot.audio[index] < 0.0F ? -slot.audio[index] : slot.audio[index];
+            const float left = std::fabs(slot.audio[index]);
             peak = std::max(peak, left);
             clipped += left >= 1.0F ? 1U : 0U;
             if (stereo_output) {
-                const float right =
-                    slot.right[index] < 0.0F ? -slot.right[index] : slot.right[index];
+                const float right = std::fabs(slot.right[index]);
                 peak = std::max(peak, right);
                 clipped += right >= 1.0F ? 1U : 0U;
             }
         }
-        output_clipped_samples.fetch_add(clipped, std::memory_order_relaxed);
+        // The 64-bit diagnostic total needs a software lock on the S3. Do not
+        // enter it for the common block with no clipped samples.
+        if (clipped)
+            output_clipped_samples.fetch_add(clipped, std::memory_order_relaxed);
         record_peak(output_peak_bits, peak);
     }
     SpscRing<std::uint64_t, kOutputRingFrames>::WriteReservation output{};
@@ -682,7 +688,11 @@ IRAM_ATTR void stage_a_task(void*) noexcept {
                 PipelineSlot& slot = pipeline_slot(slot_index);
                 const bool collect_cycles = cycle_telemetry_enabled.load(std::memory_order_relaxed);
                 const std::uint32_t start = collect_cycles ? esp_cpu_get_cycle_count() : 0U;
-                // Stage B has already run the delay; only the reverb is left.
+                if (slot.cabinet)
+                    pedalboard_cabinet_finish(slot.audio, slot.right, slot.cabinet_cursor);
+                // Cabinet blocks leave delay here to preserve the signal order.
+                if (slot.delay)
+                    coyopedal_fx_process_delay_masked(slot.audio, kFrames, slot.effect_mask);
                 if (slot.reverb) {
                     coyopedal_fx_process_reverb_stereo_masked(slot.audio, slot.right, kFrames,
                                                               slot.effect_mask);
@@ -724,8 +734,7 @@ IRAM_ATTR void stage_a_task(void*) noexcept {
             if (capture_output_levels.load(std::memory_order_relaxed)) {
                 float peak = 0.0F;
                 for (std::size_t index = 0; index < kFrames; ++index) {
-                    const float sample =
-                        slot.audio[index] < 0.0F ? -slot.audio[index] : slot.audio[index];
+                    const float sample = std::fabs(slot.audio[index]);
                     peak = std::max(peak, sample);
                 }
                 record_peak(input_peak_bits, peak);
@@ -744,12 +753,14 @@ IRAM_ATTR void stage_a_task(void*) noexcept {
             const std::uint32_t start = collect_cycles ? esp_cpu_get_cycle_count() : 0U;
             slot.chain = false;
             slot.amp = false;
+            slot.cabinet = false;
             slot.delay = false;
             slot.reverb = false;
             if (tuner_active.load(std::memory_order_relaxed)) {
                 coyopedal_tuner_feed(slot.audio, kFrames);
                 std::fill_n(slot.audio, kFrames, 0.0F);
             } else if (!pedal_bypassed.load(std::memory_order_relaxed)) {
+                slot.cabinet = pedalboard_cabinet_enabled();
                 slot.effect_mask = coyopedal_fx_enabled_mask();
                 slot.chain = slot.effect_mask != 0U;
                 slot.delay = (slot.effect_mask & (1U << COYOPEDAL_FX_DELAY)) != 0U;
@@ -809,6 +820,13 @@ IRAM_ATTR void stage_b_task(void*) noexcept {
                                         coyopedal::pedal::Processor::kStagedLayerCount);
                 g_engine.finish_block(scratch, slot.audio);
             }
+            if (slot.cabinet) {
+#if COYOPEDAL_PEDAL_S3_SPLIT_LAYER >= 9
+                pedalboard_cabinet_process(slot.audio, kFrames);
+#else
+                slot.cabinet_cursor = pedalboard_cabinet_begin(slot.audio, slot.right);
+#endif
+            }
 #if COYOPEDAL_PEDAL_S3_SPLIT_LAYER >= 9
             // With layer 8 on stage A, stage B has room for the whole post-amp
             // chain and finishes the slot itself, with no return hop.
@@ -823,7 +841,7 @@ IRAM_ATTR void stage_b_task(void*) noexcept {
             // Delay precedes reverb in the signal chain and fits in stage B's
             // budget, so the return stage on core 0 runs only the reverb and
             // the PCM packing.
-            if (slot.delay) {
+            if (slot.delay && !slot.cabinet) {
                 coyopedal_fx_process_delay_masked(slot.audio, kFrames, slot.effect_mask);
                 slot.delay = false;
             }
@@ -1131,13 +1149,16 @@ bool adopt_uac2_layout(const usb_config_desc_t* config, usb_speed_t speed) {
         playback_frame_bytes = pair.playback.format.frameBytes();
         nominal_frames_per_packet = kFramesPerPacket;
         feedback_16_16 = kFramesPerPacket << 16;
-        capture_paced_playback = feedback_endpoint == 0 && pair.playback.data.sync == 1;
+        // The negotiated streams use the same resolved clock source. Capture
+        // packets therefore give its exact sample count, including fractional
+        // frames; independently rounding feedback slowly drains a duplex ring.
+        capture_paced_playback = pair.playback.data.sync == 1;
         capture_packet_read = capture_packet_write = 0;
         transport_supported = true;
         ESP_LOGI(kTag, "UAC2 selected shared clock %u, 48 kHz; playback pacing=%s", in_root,
-                 feedback_endpoint        ? "explicit feedback"
-                 : capture_paced_playback ? "capture packets"
-                                          : "USB frames");
+                 capture_paced_playback ? "capture packets"
+                 : feedback_endpoint    ? "explicit feedback"
+                                        : "USB frames");
         return true;
     }
     ESP_LOGE(kTag, "no supported UAC2 duplex alternate; descriptors follow");
@@ -1205,6 +1226,20 @@ IRAM_ATTR esp_err_t submit_transfer(usb_transfer_t* const transfer) noexcept {
 IRAM_ATTR void encode_packed_pcm(std::uint8_t* out, const std::uint64_t* const frames,
                                  const unsigned count, const unsigned subslot,
                                  const unsigned channels) noexcept {
+    if (channels == 2U && subslot == 3U) {
+        for (unsigned n = 0; n < count; ++n) {
+            const auto left = static_cast<std::uint32_t>(frames[n]);
+            const auto right = static_cast<std::uint32_t>(frames[n] >> 32U);
+            out[0] = static_cast<std::uint8_t>(left >> 8U);
+            out[1] = static_cast<std::uint8_t>(left >> 16U);
+            out[2] = static_cast<std::uint8_t>(left >> 24U);
+            out[3] = static_cast<std::uint8_t>(right >> 8U);
+            out[4] = static_cast<std::uint8_t>(right >> 16U);
+            out[5] = static_cast<std::uint8_t>(right >> 24U);
+            out += 6;
+        }
+        return;
+    }
     for (unsigned n = 0; n < count; ++n) {
         const std::uint32_t left = static_cast<std::uint32_t>(frames[n]);
         const std::uint32_t right = static_cast<std::uint32_t>(frames[n] >> 32U);
@@ -1253,7 +1288,7 @@ IRAM_ATTR void fill_playback_urb(usb_transfer_t* const transfer) noexcept {
     std::uint32_t total_frames = 0;
     for (int packet = 0; packet < kPacketsPerUrb; ++packet) {
         std::uint32_t frames = kFramesPerPacket;
-        if (audio_protocol == AudioProtocol::Uac2) {
+        if (audio_protocol == AudioProtocol::Uac2 && !capture_paced_playback) {
             feedback_accumulator += feedback_16_16;
             frames = feedback_accumulator >> 16U;
             feedback_accumulator &= 0xffffU;
@@ -1288,7 +1323,7 @@ IRAM_ATTR void fill_playback_urb(usb_transfer_t* const transfer) noexcept {
     // catch a 64-frame producer with only a partial block in its output ring.
     if (paused)
         uac2_output_primed = false;
-    else if (!uac2_output_primed && available >= kStartupFrames)
+    else if (!uac2_output_primed && available >= kUac2OutputTargetFrames)
         uac2_output_primed = true;
     const bool consume = audio_protocol != AudioProtocol::Uac2 || paused || uac2_output_primed;
     std::size_t popped = 0;
@@ -1504,11 +1539,11 @@ IRAM_ATTR void capture_done(usb_transfer_t* const transfer) noexcept {
                     const float sample = static_cast<float>(decode(slot)) * kScale;
                     urb_samples[frame] = sample;
                     if (levels) {
-                        peak_left = std::max(peak_left, sample < 0.0F ? -sample : sample);
+                        peak_left = std::max(peak_left, std::fabs(sample));
                         if (stereo) {
                             const float right =
                                 static_cast<float>(decode(slot + (wide ? 4U : 3U))) * kScale;
-                            peak_right = std::max(peak_right, right < 0.0F ? -right : right);
+                            peak_right = std::max(peak_right, std::fabs(right));
                         }
                     }
                 }
@@ -1556,8 +1591,7 @@ IRAM_ATTR void capture_done(usb_transfer_t* const transfer) noexcept {
                             const float value =
                                 static_cast<float>(capture_codec.capture(slot, channel)) *
                                 (1.0F / 2147483648.0F);
-                            record_peak(input_channel_peak_bits[channel],
-                                        value < 0.0F ? -value : value);
+                            record_peak(input_channel_peak_bits[channel], std::fabs(value));
                         }
                     }
                 } else {
@@ -1666,7 +1700,9 @@ esp_err_t allocate_stream_transfers() noexcept {
         transfer->bEndpointAddress = playback_endpoint;
         transfer->callback = playback_done;
     }
-    if (feedback_endpoint != 0) {
+    // Shared-clock duplex playback uses exact capture packet counts. Its
+    // feedback values are unused: do not spend DMA buffers or callbacks on them.
+    if (feedback_endpoint != 0 && !capture_paced_playback) {
         for (usb_transfer_t*& transfer : feedback_urbs) {
             esp_err_t result = usb_host_transfer_alloc(feedback_mps * kFeedbackPacketsPerUrb,
                                                        kFeedbackPacketsPerUrb, &transfer);
@@ -2058,8 +2094,16 @@ void audio_heartbeat_task(void*) noexcept {
                  static_cast<double>(max_b) / ticks_per_us, 100.0 * mean_b_us / block_us, block_us,
                  miss_a, miss_b);
         last_captured = captured;
+        if (pedalboard_cabinet_enabled()) {
+            unsigned phases[4];
+            pedalboard_cabinet_timing(phases);
+            ESP_LOGI(kTag, "IR phases: forward=%.1fus mac=%.1fus inverse=%.1fus overlap=%.1fus",
+                     phases[0] / ticks_per_us, phases[1] / ticks_per_us, phases[2] / ticks_per_us,
+                     phases[3] / ticks_per_us);
+        }
         last_played = played;
         last_silent = silent;
+        internal_speaker_report();
     }
 }
 

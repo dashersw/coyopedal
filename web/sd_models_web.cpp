@@ -280,6 +280,10 @@ const char* pedalboard_sd_action(void) {
 
 // --- what the firmware calls -------------------------------------------------
 
+bool pedalboard_sd_ready(void) {
+    return !g_card.empty();
+}
+
 void pedalboard_sd_models_scan(void) {
     const unsigned first = coyopedal_model_count;
     for (const Entry& entry : g_card) {
@@ -308,7 +312,9 @@ void pedalboard_sd_models_scan(void) {
 
 bool pedalboard_sd_model_read(const coyopedal_model_t* const model, unsigned char* const out,
                               const std::size_t capacity, char* const error,
-                              const std::size_t error_capacity) {
+                              const std::size_t error_capacity, bool* includes_cabinet) {
+    if (includes_cabinet)
+        *includes_cabinet = false;
     const auto fail = [&](const char* const message) {
         if (error != nullptr && error_capacity != 0U) {
             std::snprintf(error, error_capacity, "%s", message);
@@ -345,7 +351,8 @@ bool pedalboard_sd_model_read(const coyopedal_model_t* const model, unsigned cha
     } resume;
 
     if (!pedalboard_parse_nam(reinterpret_cast<const char*>(entry->bytes.data()),
-                              entry->bytes.size(), out, capacity, error, error_capacity)) {
+                              entry->bytes.size(), out, capacity, error, error_capacity,
+                              includes_cabinet)) {
         return false;
     }
 

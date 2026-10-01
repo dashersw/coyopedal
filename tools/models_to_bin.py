@@ -8,12 +8,13 @@ know what it was given:
 
     offset  size  field
     0       4     magic "TMDL"
-    4       2     format version, currently 1
+    4       2     format version, currently 2
     6       2     entry count
     8       4     total image length, header included
     12      4     reserved, zero
-    16      n*64  entries: payload offset (u32), payload length (u32),
-                  id (24 bytes) and display name (32 bytes), both NUL padded
+    16      n*68  entries: payload offset (u32), payload length (u32),
+                  id (24 bytes) and display name (32 bytes), both NUL padded,
+                  then capture flags (u32, bit 0 = includes cabinet)
     ...           payloads, each aligned to 4 bytes
 
 scripts/pack-factory-assets.mjs runs this during `npx gea build`, writing
@@ -32,9 +33,9 @@ import struct
 import sys
 
 MAGIC = b"TMDL"
-VERSION = 1
+VERSION = 2
 HEADER_SIZE = 16
-ENTRY_SIZE = 64
+ENTRY_SIZE = 68
 ID_SIZE = 24
 NAME_SIZE = 32
 
@@ -63,7 +64,21 @@ def main() -> int:
                 return 1
             print(f"note: skipping absent model {entry['file']}", file=sys.stderr)
             continue
-        entries.append((entry["id"], entry["name"], path.read_bytes()))
+        gear = entry.get("gearType")
+        if gear not in (
+            None,
+            "amp",
+            "pedal",
+            "pedal_amp",
+            "amp_cab",
+            "amp_pedal_cab",
+            "preamp",
+            "studio",
+        ):
+            print(f"error: invalid gearType for {entry['id']}", file=sys.stderr)
+            return 1
+        flags = int(gear in ("amp_cab", "amp_pedal_cab"))
+        entries.append((entry["id"], entry["name"], path.read_bytes(), flags))
 
     if not entries:
         print("error: no models to pack", file=sys.stderr)
@@ -72,10 +87,11 @@ def main() -> int:
     payload_start = HEADER_SIZE + len(entries) * ENTRY_SIZE
     table = bytearray()
     payloads = bytearray()
-    for identifier, name, data in entries:
+    for identifier, name, data, flags in entries:
         table += struct.pack("<II", payload_start + len(payloads), len(data))
         table += fixed(identifier, ID_SIZE, "id")
         table += fixed(name, NAME_SIZE, "name")
+        table += struct.pack("<I", flags)
         payloads += data
         # Keep every payload 4-byte aligned; the loader reads them as words.
         while len(payloads) % 4:

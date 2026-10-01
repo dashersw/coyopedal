@@ -382,10 +382,11 @@
     ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q0, 1
     ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q0, 2
     ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q0, 3
-    ee.vsmulas.s16.qacc.ld.incp q1, \weight_ptr, q1, q0, 4
-    ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q0, 5
-    ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q0, 6
-    ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q0, 7
+    // This is one residual tap: no later iteration consumes prefetched weights.
+    ee.vsmulas.s16.qacc q1, q0, 4
+    ee.vsmulas.s16.qacc q2, q0, 5
+    ee.vsmulas.s16.qacc q3, q0, 6
+    ee.vsmulas.s16.qacc q4, q0, 7
     .endm
 
     // Load one eight-byte low-limb row and zero-extend it to eight S16
@@ -403,12 +404,19 @@
     ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q5, 1
     ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q5, 2
     ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q5, 3
-    ee.vsmulas.s16.qacc.ld.incp q1, \weight_ptr, q1, q5, 4
-    ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q5, 5
-    ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q5, 6
-    ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q5, 7
+    // The live activation path is also a single residual tap.
+    ee.vsmulas.s16.qacc q1, q5, 4
+    ee.vsmulas.s16.qacc q2, q5, 5
+    ee.vsmulas.s16.qacc q3, q5, 6
+    ee.vsmulas.s16.qacc q4, q5, 7
+    .else
+    .if \advance
+    // The low history has an eight-byte row. Advance directly by the
+    // dilation stride instead of a separate integer ADD after every tap.
+    ee.vld.l.64.xp q0, \input_ptr, a6
     .else
     ee.vld.l.64.ip q0, \input_ptr, 8
+    .endif
     ee.xorq q5, q5, q5
     ee.vzip.8 q0, q5
     ee.vsmulas.s16.qacc.ld.incp q1, \weight_ptr, q1, q0, 0
@@ -419,9 +427,6 @@
     ee.vsmulas.s16.qacc.ld.incp q2, \weight_ptr, q2, q0, 5
     ee.vsmulas.s16.qacc.ld.incp q3, \weight_ptr, q3, q0, 6
     ee.vsmulas.s16.qacc.ld.incp q4, \weight_ptr, q4, q0, 7
-    .endif
-    .if \advance
-    add     \input_ptr, \input_ptr, a6
     .endif
     .endm
 
@@ -943,7 +948,6 @@
     l32i    a13, a14, 32
     s32i    a13, a1, 56
     l32i    a13, a14, 36
-    addi    a13, a13, -8
     s32i    a13, a1, 60
     l32i    a13, a14, 40
     s32i    a13, a1, 64
@@ -1272,3 +1276,36 @@ s3_a2full_mirror_rows:
 .Lmirror_high_done:
     retw
     .size s3_a2full_mirror_rows, .-s3_a2full_mirror_rows
+
+// Cold diagnostic calls the same macros as the hot residual kernels. Keep it
+// in flash; it runs only with the audio pipeline drained before a benchmark.
+    .section .text.s3_a2full_residual_check, "ax"
+    .align 4
+    .global s3_a2full_residual_check
+    .type s3_a2full_residual_check, @function
+s3_a2full_residual_check:
+    entry a1, 32
+    mov a15, a4
+    mov a4, a3
+    ee.zero.qacc
+    PRIME_W16 a4
+    bnez a5, .Lresidual_check_low
+    DOT_W16 a2, a4
+    j .Lresidual_check_extract
+.Lresidual_check_low:
+    beqi a5, 2, .Lresidual_check_low_ring
+    ee.vld.128.ip q5, a2, 16
+    DOT_W16_S8_INPUT a2, a4, 0, 1
+    j .Lresidual_check_extract
+.Lresidual_check_low_ring:
+    movi a6, 8
+    movi a7, 4
+    loopnez a7, .Lresidual_check_low_ring_done
+    DOT_W16_S8_INPUT a2, a4, 1
+.Lresidual_check_low_ring_done:
+.Lresidual_check_extract:
+    QACC_TO_I32_VECTORS
+    ee.vst.128.ip q0, a15, 16
+    ee.vst.128.ip q1, a15, 16
+    retw
+    .size s3_a2full_residual_check, .-s3_a2full_residual_check

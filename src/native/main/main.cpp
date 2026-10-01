@@ -48,6 +48,12 @@ extern "C" bool coyopedal_nam_bank_arena_owns_ptr(const void* block);
 #include "runtime.h"
 #include "control.h"
 
+#if GEA_EMBEDDED_DISPLAY_FLUSH_POOL_BYTES > 0
+namespace gea::platform::esp32::display {
+extern std::uint16_t g_flushPool[];
+}
+#endif
+
 #if __has_include("remote_config.h")
 #include "remote_config.h"
 #else
@@ -809,6 +815,15 @@ extern "C" void gea_app_native_boot(void) {
     gea::framework::Runtime::holdDisplayReserve(
         gea::platform::memory::Memory::reserveInternalDma(kDisplayInternalReserveBytes));
     coyopedal_remote_capture_logs();
+#if GEA_EMBEDDED_DISPLAY_FLUSH_POOL_BYTES > 0
+    // A broad UI-state linker mapping must never send this DMA buffer to PSRAM.
+    // The strong reference also catches a target rename at link time.
+    const auto* flush_pool = gea::platform::esp32::display::g_flushPool;
+    ESP_ERROR_CHECK(esp_ptr_internal(flush_pool) && esp_ptr_dma_capable(flush_pool)
+                        ? ESP_OK
+                        : ESP_ERR_INVALID_STATE);
+    ESP_LOGI(kTag, "LCD DMA stripe verified: %u bytes", GEA_EMBEDDED_DISPLAY_FLUSH_POOL_BYTES);
+#endif
     // Before anything else can overwrite it: why the board came back.
     report_previous_panic();
     coyopedal_remote_prepare_runtime();
@@ -1020,11 +1035,13 @@ extern "C" void gea_app_native_boot(void) {
     if (usb_audio_begin_update()) {
         coyopedal_s3_modulation_promote_line();
         coyopedal_s3_reverb_promote_hot_lines();
+        if (internal_speaker_enabled())
+            gea::framework::Runtime::holdDisplayReserve(nullptr);
+        internal_speaker_start();
         usb_audio_end_update();
     } else {
         ESP_LOGW(kTag, "could not pause audio for effect-line promotion");
     }
-    internal_speaker_start();
     // A measurement window confirms the pedal is engaged through the same
     // UI path the footswitch uses. The UI CHECK line it logs is the evidence.
     coyopedal_remote_audio_window_configure();

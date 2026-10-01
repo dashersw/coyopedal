@@ -63,9 +63,9 @@ unsigned coyopedal_presets_from_json(const char* text, size_t length,
 size_t coyopedal_presets_to_json(const coyopedal_preset_record_t* presets, unsigned count,
                                  char* out, size_t capacity);
 
-// Room for a full library of them: 32 presets of about 560 bytes, and a margin
+// Room for a full library of them: 32 presets including optional cabinet paths, and a margin
 // for names and profile ids at their limits.
-#define COYOPEDAL_PRESET_JSON_MAX 24576U
+#define COYOPEDAL_PRESET_JSON_MAX 32768U
 
 #ifdef __cplusplus
 }

@@ -32,7 +32,10 @@
       "../src/audio/tuner.cpp",
       "../src/audio/nam/nam_a2_full_s3_native.cpp",
       "../src/audio/nam/runtime_allocation_plan.c",
-      "../third_party/cjson/cJSON.c"
+      "../third_party/cjson/cJSON.c",
+      "../src/native/storage/cabinet.cpp",
+      "../src/audio/cabinet_ir.cpp",
+      "../src/audio/ir_wav.cpp"
     ],
     "web": {
       "includeDirs": [
@@ -57,7 +60,10 @@
         "-sAUDIO_WORKLET=1",
         "-sENVIRONMENT=web,worker",
         "-sALLOW_MEMORY_GROWTH=0",
-        "-sINITIAL_MEMORY=201326592"
+        "-sINITIAL_MEMORY=201326592",
+        "--embed-file=assets/cabinets/jester-v30-sm57.wav@Factory/V30 SM57.wav",
+        "--embed-file=assets/cabinets/jester-dv77-sm57.wav@Factory/DV77 SM57.wav",
+        "--embed-file=assets/cabinets/jester-rockdriver-e606.wav@Factory/Rockdriver e606.wav"
       ],
       "exportedFunctions": [
         "_pedal_audio_start",

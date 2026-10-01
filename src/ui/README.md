@@ -72,7 +72,8 @@ caches. Internal SRAM is reserved for the NAM engine; see
 
 ## Gea packages
 
-The `@geastack/*` packages track `latest` and carry no local patches; the
+Core, engine and host are pinned in `package.json`; other `@geastack/*` packages track
+`latest`. All come from the registry without local patches, and the committed
 lockfile records the versions a build used (see
 `skills/updating-gea-dependencies`). What this board needs from
 Gea it asks for in `gea.defines`: the `GEA_EMBEDDED_*_EXTERNAL` switches move

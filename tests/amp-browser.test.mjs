@@ -83,8 +83,12 @@ test('the top holds the factory captures and the SD card', () => {
   assert.equal(store.browseTitles[0], 'SD card')
   assert.equal(store.browseFolder[0], true)
   assert.match(store.browseSubtitles[0], /^\d+ captures$/)
-  assert.deepEqual(shown('browseTitles').slice(1), ['Diezel Herbert C1 V30', 'Ampete One C4 V30'])
-  assert.deepEqual(shown('browseFolder').slice(1), [false, false])
+  assert.deepEqual(shown('browseTitles').slice(1), [
+    'Diezel Herbert C1 V30',
+    'Ampete One C4 V30',
+    'Ampete One C4 (amp only)',
+  ])
+  assert.deepEqual(shown('browseFolder').slice(1), [false, false, false])
 })
 
 test('a folder descends and the header walks back up', () => {

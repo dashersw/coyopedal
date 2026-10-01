@@ -177,6 +177,7 @@ def request(
     body: bytes | None = None,
     *,
     timeout: float = 90,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[bytes, dict[str, str]]:
     # Engine qualification can reload, prewarm, and calibrate the embedded
     # A2-Full model before replying.  Leave room for the slowest factory model.
@@ -185,6 +186,7 @@ def request(
     if body is not None:
         headers["Content-Length"] = str(len(body))
         headers["Content-Type"] = "text/plain"
+    headers.update(extra_headers or {})
     try:
         connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
@@ -197,6 +199,27 @@ def request(
     if response.status >= 300:
         fail(f"Device returned HTTP {response.status}: {data.decode(errors='replace').strip()}")
     return data, response_headers
+
+
+def upload_ir(config: Config, host: str, path: Path) -> None:
+    if not path.is_file():
+        fail(f"IR file not found: {path}")
+    if not 44 <= path.stat().st_size <= 1024 * 1024:
+        fail(f"IR must be a WAV between 44 bytes and 1 MiB: {path}")
+    body = path.read_bytes()
+    sha = hashlib.sha256(body).hexdigest()
+    headers = {
+        "X-CoyoPedal-Filename": path.name,
+        "X-CoyoPedal-SHA256": sha,
+        "Content-Type": "audio/wav",
+    }
+    reply, _ = request(config, host, "POST", "/v1/ir/upload", body, extra_headers=headers)
+    readback, _ = request(
+        config, host, "GET", "/v1/ir/download", extra_headers={"X-CoyoPedal-Filename": path.name}
+    )
+    if readback != body:
+        fail(f"SD readback differs from uploaded IR: {path.name}")
+    print(f"{path.name}: uploaded and readback verified; {reply.decode().strip()}")
 
 
 def upload(config: Config, host: str, image: Path) -> None:
@@ -510,6 +533,11 @@ def parse_args() -> argparse.Namespace:
     command.add_argument("text", nargs="+", help="HELP lists the bounded command set")
     ota = subcommands.add_parser("ota")
     ota.add_argument("image", nargs="?", type=Path, default=DEFAULT_IMAGE)
+    subcommands.add_parser("ir-list", help="list cabinet WAVs on the pedal's SD card")
+    ir_upload = subcommands.add_parser(
+        "ir-upload", help="upload WAVs to /ir and verify SD readback"
+    )
+    ir_upload.add_argument("files", nargs="+", type=Path)
     profile = subcommands.add_parser(
         "effects-profile",
         help="measure each effect alone, then the complete six-effect chain",
@@ -574,6 +602,12 @@ def main() -> int:
         print(body.decode(errors="replace"), end="")
     elif args.command == "ota":
         upload(config, host, args.image)
+    elif args.command == "ir-list":
+        body, _ = request(config, host, "GET", "/v1/ir")
+        print(json.dumps(json.loads(body), indent=2))
+    elif args.command == "ir-upload":
+        for path in args.files:
+            upload_ir(config, host, path)
     elif args.command == "effects-profile":
         if not 1 <= args.seconds <= 60:
             fail("--seconds must be between 1 and 60.")

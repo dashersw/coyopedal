@@ -32,30 +32,36 @@ USB capture (channel 0)
   -> [tuner: feeds the pitch detector and mutes the output]
   -> gate -> compressor -> modulation -> overdrive
   -> NAM amp (A2-Full, 23 layers + head)
-  -> modulation 2 -> delay -> reverb (stereo)
+  -> cabinet IR -> delay -> reverb (stereo)
   -> PCM pack -> USB playback (left/right)
 ```
 
 The master bypass passes the input straight to the output, gains included. The
 amp block has its own switch and can be off while the effects run. Effects are
-identified by a 7-bit mask in storage order (`coyopedal_fx_block_t` in
+identified by a 6-bit mask in storage order (`coyopedal_fx_block_t` in
 `src/audio/effects.h`): gate 1, compressor 2, overdrive 4, reverb 8,
-modulation 16, delay 32, modulation 2 64. The storage order is not the signal
+modulation 16, delay 32. The storage order is not the signal
 order.
 
-| Block        | Notes                                                                            |
-| ------------ | -------------------------------------------------------------------------------- |
-| Gate         | Noise gate ahead of everything else                                              |
-| Compressor   | Threshold, ratio, attack, release and makeup gain                                |
-| Modulation   | Pre-amp slot, where a phaser or vibe sits on a real board                        |
-| Overdrive    | Drive in front of the amp                                                        |
-| Amp          | NAM A2-Full capture, plus a three-band tone stack and input/output gain          |
-| Modulation 2 | Effects-loop slot, ahead of delay and reverb                                     |
-| Delay        | Up to two seconds, float line in PSRAM                                           |
-| Reverb       | Compact two-tank reverb with Q15 delay lines; the block that makes output stereo |
+| Block      | Notes                                                                            |
+| ---------- | -------------------------------------------------------------------------------- |
+| Gate       | Noise gate ahead of everything else                                              |
+| Compressor | Threshold, ratio, attack, release and makeup gain                                |
+| Modulation | Pre-amp slot, where a phaser or vibe sits on a real board                        |
+| Overdrive  | Drive in front of the amp                                                        |
+| Amp        | NAM A2-Full capture, plus a three-band tone stack and input/output gain          |
+| Cabinet    | Optional 1,024-tap mono cabinet IR loaded from `/ir` WAVs on the SD card         |
+| Delay      | Up to two seconds, float line in PSRAM                                           |
+| Reverb     | Compact two-tank reverb with Q15 delay lines; the block that makes output stereo |
 
 All effect code lives in `src/audio/effects.cpp`. The per-block entry points are
 placed in IRAM so they never wait on the flash or PSRAM caches.
+The optional cabinet uses `src/audio/cabinet_ir.cpp`, with SD loading in
+`src/native/storage/cabinet.cpp`. Stage B transforms the amp output and sums all
+sixteen IR partitions. Stage A performs the inverse transform using the S3
+radix-four FFT and adds the retained overlap tail before delay and reverb.
+Separate FFT workspaces permit the two stages to run concurrently. This reuses the existing pipeline handoff
+and adds no block delay.
 
 ## The two-core pipeline
 
@@ -70,8 +76,8 @@ split across both cores as a pipeline (`src/native/drivers/usb_audio.cpp`):
 | ------- | ------- | ---- | -------- | --------------------------------------------------------------------------- |
 | USB     | client  | 0    | 20       | Isochronous completions: decode capture, fill playback from the output ring |
 | Stage A | `nam_a` | 0    | 19       | Pull a block from the input ring, tuner or pre-amp effects, amp layers 0-7  |
-| Stage B | `nam_b` | 1    | 22       | Amp layers 8-22 and the head, modulation 2, delay                           |
-| Return  | `nam_a` | 0    | 19       | Reverb (when enabled) and PCM packing into the output ring                  |
+| Stage B | `nam_b` | 1    | 22       | Amp layers 8-22 and the head, cabinet forward FFT and partition sums        |
+| Return  | `nam_a` | 0    | 19       | Cabinet inverse FFT and overlap, delay, reverb and PCM packing              |
 
 The split layer is 8: layers 0-7 run on core 0 and layers 8-22 on core 1. It is
 a build setting (`COYOPEDAL_PEDAL_S3_SPLIT_LAYER`, default in
@@ -118,8 +124,12 @@ contributors to the round trip, in order of size:
   whole 1 ms packet. A High Speed host would move much smaller packets, but the
   ESP32-S3 cannot enumerate at High Speed.
 - **S3 rings.** The input ring is held near one block plus one packet, and the
-  UAC2 output ring near two packets plus one block. Without a feedback
-  endpoint, the output ring depth is the only thing that absorbs DSP
+  UAC2 output ring near two packets plus one block, including startup priming.
+  Asynchronous UAC2 playback follows capture packet sizes once negotiation
+  confirms a shared clock source, even if the device also supplies feedback. Feedback URBs are unnecessary
+  for that shared-clock path; other playback paths retain feedback polling.
+  This preserves the sample count across both directions and prevents slow
+  drift caused by independently rounding feedback. The ring absorbs DSP
   completion jitter.
 - **The interface's converters**, typically around 1 ms.
 
@@ -245,7 +255,7 @@ touch.
   `scripts/panel-host-plugin.mjs`.
 - `src/native/ui/controls.c` holds the control state the UI edits and applies it
   to the engine. `src/native/ui/task.cpp` runs the tuner and preset-save pumps.
-- The render loop runs in its own task at priority 18, below both DSP stages,
+- The render loop runs in its own task at priority 17, below both DSP stages,
   with its stack in PSRAM, at up to 15 frames per second.
 - Gea state, caches and the render, frame and touch task stacks are kept out
   of internal SRAM by the `GEA_EMBEDDED_*_EXTERNAL` switches in `gea.defines`

@@ -6,14 +6,15 @@ description: Use when bumping any @geastack or @geajs package, when the pedal ne
 # Gea dependencies
 
 Install with `npm ci`, which installs exactly what `package-lock.json` names.
-Every dependency asks for `latest` in `package.json`, so the lockfile is the
-only thing that decides a version: Gea's releases and the pedal move together,
-and there are no local patches. What this pedal needs from Gea it asks for,
-and the rest is fixed upstream.
+Core, engine and host are pinned in `package.json`; other dependencies track `latest`.
+The committed lockfile records the exact package set used for a build, with no
+local patches. What this pedal needs from Gea it asks for, and the rest is fixed
+upstream.
 
 ## Bumping a package
 
-1. Run `npm install` (or `npm install <package>@latest` for one of them). It
+1. Run `npm install` (or `npm install --save-exact <package>@<version>` for a pinned
+   dependency). It
    rewrites `package-lock.json`; commit that, since it is the record of what
    the firmware was built against.
    Check the transitive version changes, then run `npm ci` to verify the lockfile

@@ -3,12 +3,21 @@
     "id": "volum-herbert-1-v30",
     "name": "Diezel Herbert C1 V30",
     "file": "assets/models/volum-herbert-1-v30.namb",
-    "required": true
+    "required": true,
+    "gearType": "amp_cab"
   },
   {
     "id": "volum-ampete-4-v30",
     "name": "Ampete One C4 V30",
     "file": "assets/models/volum-ampete-4-v30.namb",
-    "required": true
+    "required": true,
+    "gearType": "amp_cab"
+  },
+  {
+    "id": "volum-ampete-4-amp",
+    "name": "Ampete One C4 (amp only)",
+    "file": "assets/models/volum-ampete-4-amp.namb",
+    "required": true,
+    "gearType": "amp"
   }
 ]

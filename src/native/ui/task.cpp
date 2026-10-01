@@ -31,6 +31,26 @@
 #include "services/frame_scheduler.h"
 #include "ui/tree_inspection.h"
 
+// The shipped target fixes app_frame at priority 23 in CMake, above both
+// audio stages. Apply the pedal's manifest policy at creation, before the
+// task can run; no task-list scans or per-frame work enter the audio path.
+extern "C" TaskHandle_t
+__real_xTaskCreateStaticPinnedToCore(TaskFunction_t code, const char* name, uint32_t depth,
+                                     void* parameters, UBaseType_t priority, StackType_t* stack,
+                                     StaticTask_t* storage, BaseType_t core);
+extern "C" TaskHandle_t
+__wrap_xTaskCreateStaticPinnedToCore(TaskFunction_t code, const char* name, uint32_t depth,
+                                     void* parameters, UBaseType_t priority, StackType_t* stack,
+                                     StaticTask_t* storage, BaseType_t core) {
+    if (name && std::strcmp(name, "app_frame") == 0) {
+        ESP_LOGI("v1_ui", "UI frame priority: %u -> %u", unsigned(priority),
+                 unsigned(COYOPEDAL_FRAME_TASK_PRIORITY));
+        priority = COYOPEDAL_FRAME_TASK_PRIORITY;
+    }
+    return __real_xTaskCreateStaticPinnedToCore(code, name, depth, parameters, priority, stack,
+                                                storage, core);
+}
+
 void s3_v1_ui_wake();
 bool coyopedal_library_init();
 

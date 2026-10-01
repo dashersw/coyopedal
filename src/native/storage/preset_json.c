@@ -128,6 +128,22 @@ static bool read_preset(const cJSON* const entry, coyopedal_preset_record_t* con
     const cJSON* const amp_on = cJSON_GetObjectItemCaseSensitive(entry, "ampOn");
     preset->amp_on = amp_on == NULL || !cJSON_IsFalse(amp_on);
 
+    const cJSON* const cabinet = cJSON_GetObjectItemCaseSensitive(entry, "cabinet");
+    if (cabinet != NULL) {
+        const cJSON* const path = cJSON_GetObjectItemCaseSensitive(cabinet, "path");
+        const cJSON* const level = cJSON_GetObjectItemCaseSensitive(cabinet, "level");
+        if (!cJSON_IsObject(cabinet) ||
+            !copy_text(preset->cabinet.path, sizeof preset->cabinet.path, path) ||
+            (level != NULL &&
+             (!cJSON_IsNumber(level) || level->valuedouble < -180 || level->valuedouble > 60))) {
+            say(error, error_capacity, "invalid cabinet path or level");
+            return false;
+        }
+        preset->cabinet.enabled =
+            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(cabinet, "enabled"));
+        preset->cabinet.level = level != NULL ? clamp16(level->valuedouble) : 0;
+    }
+
     const cJSON* const blocks = cJSON_GetObjectItemCaseSensitive(entry, "blocks");
     if (blocks != NULL && !cJSON_IsArray(blocks)) {
         say(error, error_capacity, "blocks is not a list");
@@ -246,8 +262,14 @@ size_t coyopedal_presets_to_json(const coyopedal_preset_record_t* const presets,
         for (unsigned value = 0; value < COYOPEDAL_PRESET_AMP; ++value) {
             put(&w, "%s%d", value ? ", " : "", (int)preset->amp[value]);
         }
-        put(&w, "],\n      \"ampOn\": %s,\n      \"blocks\": [\n",
-            preset->amp_on ? "true" : "false");
+        put(&w, "],\n      \"ampOn\": %s,\n", preset->amp_on ? "true" : "false");
+        if (preset->cabinet.path[0]) {
+            put(&w, "      \"cabinet\": { \"path\": ");
+            put_string(&w, preset->cabinet.path);
+            put(&w, ", \"enabled\": %s, \"level\": %d },\n",
+                preset->cabinet.enabled ? "true" : "false", (int)preset->cabinet.level);
+        }
+        put(&w, "      \"blocks\": [\n");
         for (unsigned block = 0; block < COYOPEDAL_FX_BLOCK_COUNT; ++block) {
             const coyopedal_block_setting_t* const setting = &preset->blocks[block];
             put(&w, "        { \"block\": \"%s\", \"enabled\": %s, \"params\": [",

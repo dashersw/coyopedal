@@ -1,0 +1,15 @@
+Jester's Brutal Pack 1.0 cabinet impulse responses
+Creator: Bastian Karschewski / Jester Dyne Productions
+License: CC0 1.0 Universal (Public Domain Dedication), 2022
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The source handbook explicitly releases these impulse responses under CC0.
+They may be copied, modified, and redistributed, including commercially.
+
+Source:
+https://www.jester-dyne-productions.com/brutal-ir-pack/
+https://www.jester-dyne-productions.com/content/files/2023/04/JestersBrutalPack_1.0.zip
+
+Derived files in this directory preserve the first 1024 samples of the
+48 kHz originals. No resampling, normalization or filtering is applied.
+Full attribution and source-file mappings: ../../THIRD_PARTY_NOTICES.md

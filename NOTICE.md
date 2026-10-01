@@ -21,8 +21,10 @@ firmware under the GPL.
 | Component                           | Location                     | License    |
 | ----------------------------------- | ---------------------------- | ---------- |
 | ESP-IDF USB Host library            | `third_party/usb/`           | Apache-2.0 |
+| ESP-DSP cabinet FFT (adapted work)  | `src/audio/cabinet_fft64.S`  | Apache-2.0 |
 | cJSON                               | `third_party/cjson/`         | MIT        |
 | Saira typeface                      | `assets/fonts/`              | OFL-1.1    |
+| Jester Dyne cabinet IRs             | `assets/cabinets/`           | CC0-1.0    |
 | VoLum amp captures                  | `assets/models/volum-*.namb` | MIT        |
 | NeuralAmpModelerCore (derived work) | `src/audio/nam/`             | MIT        |
 

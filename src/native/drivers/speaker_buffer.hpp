@@ -8,7 +8,7 @@
 // Caller owns PSRAM storage. Consumer adjusts its rate for the independent USB
 // and I2S clocks; neither output ever waits for the other.
 struct SpeakerBuffer {
-    static constexpr std::uint32_t capacity = 1024;
+    static constexpr std::uint32_t capacity = 2048;
     std::int16_t* samples{};
     std::atomic<std::uint32_t> read{}, write{};
     float phase{};
@@ -35,8 +35,11 @@ struct SpeakerBuffer {
         auto r = read.load(std::memory_order_relaxed);
         const auto w = write.load(std::memory_order_acquire);
         const auto queued = w - r;
+        // Leave enough samples for a complete batch even at the slow-clock
+        // equilibrium (100 samples below the target at -1000 ppm).
+        const float target = static_cast<float>(std::max<std::size_t>(384, count + 128));
         const float step =
-            1.0F + std::clamp((static_cast<float>(queued) - 384.0F) * 0.00001F, -0.003F, 0.003F);
+            1.0F + std::clamp((static_cast<float>(queued) - target) * 0.00001F, -0.003F, 0.003F);
         if (queued < static_cast<std::size_t>(phase + count * step) + 2)
             return false;
         for (std::size_t i = 0; i < count; ++i) {

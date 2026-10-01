@@ -171,3 +171,38 @@ test('internal speaker setting is independent of presets and survives reload', (
   store.toggleSpeaker()
   assert.equal(store.speakerEnabled, false)
 })
+
+test('cabinet control follows capture metadata and returns to Amp', () => {
+  fixture = createPanelPreviewStore(null, [
+    { gear_type: 'amp' },
+    { gear_type: 'amp_cab' },
+    { gear_type: 'amp_pedal_cab' },
+  ])
+  store.sync()
+  assert.equal(store.captureIncludesCabinet, false)
+  store.show(1)
+  store.command(17)
+  assert.equal(store.screen, 11)
+  store.command(18, 1)
+  assert.equal(store.cabinetEnabled, true)
+  store.back()
+  assert.equal(store.screen, 1)
+
+  for (const model of [1, 2]) {
+    store.command(0, model)
+    assert.equal(store.captureIncludesCabinet, true)
+    assert.equal(store.cabinetEnabled, false, 'hidden external IR must be bypassed')
+    store.show(1)
+    store.command(17)
+    assert.equal(store.screen, 1, 'cannot enter a hidden cabinet selector')
+    store.command(18, 2)
+    assert.equal(fixture.label(22), 'Factory/V30 SM57.wav', 'hidden action must preserve the IR')
+  }
+
+  store.command(0, 0)
+  assert.equal(store.captureIncludesCabinet, false)
+  assert.equal(store.cabinetEnabled, true, 'amp-only restores the remembered IR')
+  store.command(0, 3)
+  assert.equal(store.captureIncludesCabinet, false, 'unknown metadata keeps Cab available')
+  assert.equal(store.cabinetEnabled, true)
+})

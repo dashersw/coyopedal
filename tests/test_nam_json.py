@@ -92,6 +92,50 @@ class NamJsonTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((WORK / "output.namb").read_bytes(), self.raw)
 
+    def test_cabinet_metadata_does_not_change_model_weights(self):
+        for metadata, included in [
+            (None, False),
+            ({}, False),
+            ({"gear_type": "amp"}, False),
+            ({"gear_type": "pedal_amp"}, False),
+            ({"gear_type": "preamp"}, False),
+            ({"gear_type": "amp_cab"}, True),
+            ({"gear_type": "amp_pedal_cab"}, True),
+            ({"gear_type": "studio"}, False),
+            ({"gear_type": "future_value"}, False),
+            ({"gear_type": 42}, False),
+        ]:
+            with self.subTest(metadata=metadata):
+                model = dict(self.model, metadata=metadata)
+                result = self.parse(model)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    result.stdout.strip(), "includes_cab" if included else "cab_available"
+                )
+                self.assertEqual((WORK / "output.namb").read_bytes(), self.raw)
+
+    def test_container_metadata_describes_the_whole_capture(self):
+        member = dict(self.model, metadata={"gear_type": "amp"})
+        result = self.parse(
+            {
+                "architecture": "SlimmableContainer",
+                "metadata": {"gear_type": "amp_cab"},
+                "config": {"submodels": [{"model": member}]},
+            }
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "includes_cab")
+        # Container metadata absent: use the compatible member's metadata.
+        member = dict(self.model, metadata={"gear_type": "amp_pedal_cab"})
+        result = self.parse(
+            {
+                "architecture": "SlimmableContainer",
+                "config": {"submodels": [{"model": member}]},
+            }
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "includes_cab")
+
     def test_rejects_unsupported_topology(self):
         for field, value in [
             ("channels", 16),

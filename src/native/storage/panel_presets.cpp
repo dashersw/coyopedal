@@ -18,14 +18,17 @@ constexpr unsigned capacity = 32;
 // before the Ampete One replaced it: a stored preset whose amp is not in the
 // library cannot be recalled at all ("Preset amp missing from SD"), so those
 // lists are seeded again too.
-constexpr uint32_t store_version = 3;
-struct Sound {
+constexpr uint32_t store_version = 4;
+struct LegacySound {
     char profile[24];
     int16_t amp[6];
     int16_t params[COYOPEDAL_FX_BLOCK_COUNT][5];
     uint8_t enabled[COYOPEDAL_FX_BLOCK_COUNT];
     uint8_t amp_on;
     uint8_t reserved;
+};
+struct Sound : LegacySound {
+    coyopedal_cabinet_setting_t cabinet;
 };
 struct Preset {
     char name[24];
@@ -35,6 +38,14 @@ struct PresetStore {
     uint32_t version;
     uint32_t count;
     Preset presets[capacity];
+};
+struct LegacyPreset {
+    char name[24];
+    LegacySound sound;
+};
+struct LegacyStore {
+    uint32_t version, count;
+    LegacyPreset presets[capacity];
 };
 // The card, or the folder standing in for one: src/native/storage/sd_models.cpp
 // on the board, web/sd_models_web.cpp in the browser. Every way of changing a
@@ -72,7 +83,8 @@ bool valid(const PresetStore& value) {
     for (unsigned i = 0; i < value.count; i++) {
         const auto& p = value.presets[i];
         if (!valid_name(p.name) || !memchr(p.sound.profile, 0, sizeof p.sound.profile) ||
-            p.sound.amp_on > 1)
+            p.sound.amp_on > 1 || !memchr(p.sound.cabinet.path, 0, sizeof p.sound.cabinet.path) ||
+            p.sound.cabinet.level < -180 || p.sound.cabinet.level > 60)
             return false;
         for (unsigned j = 0; j < 6; j++)
             if (p.sound.enabled[j] > 1)
@@ -82,6 +94,7 @@ bool valid(const PresetStore& value) {
 }
 Sound capture() {
     Sound s{};
+    pedalboard_cabinet_setting(&s.cabinet);
     coyopedal_control_state_t state{};
     coyopedal_ui_control_state(&state);
     if (state.model < coyopedal_model_count)
@@ -98,6 +111,9 @@ Sound capture() {
     return s;
 }
 bool apply(const Sound& s) {
+    char reason[64]{};
+    if (!pedalboard_cabinet_apply(&s.cabinet, reason, sizeof reason))
+        return fail(reason);
     unsigned model = 0;
     for (; model < coyopedal_model_count; model++)
         if (!std::strcmp(s.profile, coyopedal_models[model].id))
@@ -129,6 +145,7 @@ coyopedal_preset_record_t record_of(const Preset& preset) {
     std::snprintf(out.profile, sizeof out.profile, "%s", preset.sound.profile);
     std::copy_n(preset.sound.amp, COYOPEDAL_PRESET_AMP, out.amp);
     out.amp_on = preset.sound.amp_on != 0;
+    out.cabinet = preset.sound.cabinet;
     for (unsigned i = 0; i < COYOPEDAL_FX_BLOCK_COUNT; i++) {
         out.blocks[i].enabled = preset.sound.enabled[i] != 0;
         std::copy_n(preset.sound.params[i], COYOPEDAL_PRESET_PARAMS, out.blocks[i].params);
@@ -142,6 +159,7 @@ Preset preset_of(const coyopedal_preset_record_t& record) {
     std::snprintf(out.sound.profile, sizeof out.sound.profile, "%s", record.profile);
     std::copy_n(record.amp, COYOPEDAL_PRESET_AMP, out.sound.amp);
     out.sound.amp_on = record.amp_on ? 1 : 0;
+    out.sound.cabinet = record.cabinet;
     for (unsigned i = 0; i < COYOPEDAL_FX_BLOCK_COUNT; i++) {
         out.sound.enabled[i] = record.blocks[i].enabled ? 1 : 0;
         std::copy_n(record.blocks[i].params, COYOPEDAL_PRESET_PARAMS, out.sound.params[i]);
@@ -232,13 +250,31 @@ void init() {
         size_t size = sizeof(PresetStore);
         result = nvs_get_blob(handle, "presets", store_, &size);
         nvs_close(handle);
+        if (result == ESP_OK && size == sizeof(LegacyStore) && store_->version == 3 &&
+            store_->count > 0 && store_->count <= capacity) {
+            // Expand backwards in place: preserve every v3 user preset and the
+            // remembered selection, adding a bypassed cabinet to each record.
+            for (unsigned i = store_->count; i > 0; --i) {
+                LegacyPreset saved{};
+                std::memcpy(&saved,
+                            reinterpret_cast<const unsigned char*>(store_) +
+                                offsetof(LegacyStore, presets) + (i - 1) * sizeof(LegacyPreset),
+                            sizeof saved);
+                store_->presets[i - 1] = {};
+                std::memcpy(store_->presets[i - 1].name, saved.name, sizeof saved.name);
+                static_cast<LegacySound&>(store_->presets[i - 1].sound) = saved.sound;
+            }
+            store_->version = store_version;
+            size = sizeof(PresetStore);
+        }
         if (result == ESP_OK && size == sizeof(PresetStore) && valid(*store_)) {
             current = std::min(current, unsigned(store_->count - 1));
             writable = true;
             return;
         }
-        const bool outdated =
-            result == ESP_OK && size == sizeof(PresetStore) && store_->version < store_version;
+        const bool outdated = result == ESP_OK &&
+                              (size == sizeof(PresetStore) || size == sizeof(LegacyStore)) &&
+                              store_->version < 3;
         if (outdated) {
             current = 0;
         } else if (result != ESP_ERR_NVS_NOT_FOUND) {
@@ -263,6 +299,7 @@ void init() {
         std::snprintf(p.name, sizeof p.name, "%s", old.name);
         std::snprintf(p.sound.profile, sizeof p.sound.profile, "%s", old.profile);
         p.sound.amp_on = old.amp_on ? 1 : 0;
+        p.sound.cabinet = old.cabinet;
         std::copy_n(old.amp, 6, p.sound.amp);
         for (unsigned j = 0; j < COYOPEDAL_FX_BLOCK_COUNT; j++) {
             p.sound.enabled[j] = old.blocks[j].enabled;
@@ -293,7 +330,11 @@ bool edited() {
     if (!store_ || current >= store_->count)
         return false;
     const auto s = capture();
-    return std::memcmp(&s, &store_->presets[current].sound, sizeof s) != 0;
+    const auto& saved = store_->presets[current].sound;
+    return std::memcmp(static_cast<const LegacySound*>(&s), static_cast<const LegacySound*>(&saved),
+                       sizeof(LegacySound)) != 0 ||
+           std::strcmp(s.cabinet.path, saved.cabinet.path) != 0 ||
+           s.cabinet.enabled != saved.cabinet.enabled || s.cabinet.level != saved.cabinet.level;
 }
 bool load(unsigned index) {
     clear();

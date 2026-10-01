@@ -37,7 +37,7 @@ PROFILE_SIZE = 24
 PARAMS = 5
 AMP = 6
 # src/native/storage/preset_json.h.
-JSON_MAX = 24576
+JSON_MAX = 32768
 JSON_VERSION = 3
 
 # coyopedal_fx_block_t's order, which is the order preset_json.c writes them in.

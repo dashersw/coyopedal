@@ -5,6 +5,8 @@
 #ifdef ESP_PLATFORM
 void internal_speaker_init();
 void internal_speaker_start();
+// Diagnostics only; call from the low-priority audio heartbeat.
+void internal_speaker_report();
 bool internal_speaker_available();
 bool internal_speaker_enabled();
 void internal_speaker_set_enabled(bool enabled);

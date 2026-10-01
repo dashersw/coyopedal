@@ -10,11 +10,13 @@ int main(int argc, char** argv) {
     std::string json((std::istreambuf_iterator<char>(input)), {});
     std::vector<uint8_t> data(48616);
     char error[128]{};
+    bool includes_cabinet = false;
     if (!pedalboard_parse_nam(json.data(), json.size(), data.data(), data.size(), error,
-                              sizeof error)) {
+                              sizeof error, &includes_cabinet)) {
         std::cerr << error << '\n';
         return 1;
     }
+    std::cout << (includes_cabinet ? "includes_cab" : "cab_available") << '\n';
     std::ofstream output(argv[2], std::ios::binary);
     output.write(reinterpret_cast<const char*>(data.data()), data.size());
 }

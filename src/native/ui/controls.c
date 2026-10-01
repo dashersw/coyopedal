@@ -6,6 +6,7 @@
 #include "factory_presets.h"
 #include "controls.h"
 #include "audio/effects.h"
+#include "audio/cabinet.h"
 #include "audio/tuner.h"
 #include "audio/usb_frame_processor.h"
 #include <string.h>
@@ -130,6 +131,11 @@ uint32_t coyopedal_ui_revision(void) {
 
     const unsigned model = coyopedal_active_model();
     mix(&hash, &model, sizeof model);
+    coyopedal_cabinet_setting_t cabinet = {0};
+    pedalboard_cabinet_setting(&cabinet);
+    mix(&hash, cabinet.path, strlen(cabinet.path));
+    mix(&hash, &cabinet.enabled, sizeof cabinet.enabled);
+    mix(&hash, &cabinet.level, sizeof cabinet.level);
 
     for (uint8_t block = 0; block < COYOPEDAL_FX_BLOCK_COUNT; ++block) {
         const coyopedal_fx_block_t fx = (coyopedal_fx_block_t)block;

@@ -70,6 +70,13 @@ export class PedalboardStore extends Store {
   browseTotal = 0
   browseTitle = ''
   browseSubtitle = ''
+  captureIncludesCabinet = false
+  cabinetEnabled = false
+  cabinetRows = 0
+  cabinetPage = 0
+  cabinetPages = 1
+  cabinetNames: string[] = ['', '', '', '']
+  cabinetActive: boolean[] = [false, false, false, false]
   parameterNames: string[] = []
   parameterLabels: string[] = []
   parameterValues: number[] = []
@@ -95,6 +102,8 @@ export class PedalboardStore extends Store {
     this.ampName = board.label(0, 0)
     this.engaged = board.get(10) !== 0
     this.ampEnabled = board.get(16) !== 0
+    this.cabinetEnabled = board.get(82) !== 0
+    this.captureIncludesCabinet = board.get(92) !== 0
     for (let i = 0; i < 6; i++) {
       const on = board.get(20 + i) !== 0
       if (this.enabled[i] !== on) this.enabled[i] = on
@@ -191,6 +200,17 @@ export class PedalboardStore extends Store {
       }
     }
     if (this.presets.length !== presetCount) this.presets.length = presetCount
+    if (this.screen === 11) {
+      this.cabinetRows = board.get(86)
+      this.cabinetPage = board.get(84)
+      this.cabinetPages = board.get(85)
+      for (let i = 0; i < 4; i++) {
+        const name = i < this.cabinetRows ? board.label(23, i) : ''
+        const active = i < this.cabinetRows && board.get(88 + i) !== 0
+        if (this.cabinetNames[i] !== name) this.cabinetNames[i] = name
+        if (this.cabinetActive[i] !== active) this.cabinetActive[i] = active
+      }
+    }
     if (this.screen === 1) {
       this.browseLevel = board.get(31)
       this.browsePageIndex = board.get(29)
@@ -275,6 +295,16 @@ export class PedalboardStore extends Store {
   browsePage(delta: number) {
     this.command(16, 0, delta)
   }
+  chooseCabinet(row: number) {
+    if (row >= this.cabinetRows || this.loading) return
+    this.loading = true
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        this.command(18, row)
+        this.loading = false
+      }),
+    )
+  }
   command(action: number, index = 0, value = 0) {
     board.action(action, index, value)
     this.sync()
@@ -283,6 +313,7 @@ export class PedalboardStore extends Store {
     if (this.tuner) this.command(4)
     if (this.screen === 1) this.command(15)
     else if (this.screen === 9) this.command(13)
+    else if (this.screen === 11) this.show(1)
     else
       this.show(
         this.screen === 6 || this.screen === 7 || this.screen === 8

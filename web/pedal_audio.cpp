@@ -27,6 +27,7 @@
 #include <new>
 
 #include "audio/effects.h"
+#include "audio/cabinet.h"
 #include "audio/processor.hpp"
 #include "audio/tuner.h"
 #include "audio/usb_frame_processor.h"
@@ -185,6 +186,9 @@ void process_block(float* const samples, float* const right, bool& stereo) noexc
             g_engine.process_layers(g_scratch, 0, coyopedal::pedal::Processor::kStagedLayerCount);
             g_engine.finish_block(g_scratch, samples);
         }
+    }
+    if (pedalboard_cabinet_enabled()) {
+        pedalboard_cabinet_process(samples, kBlockFrames);
     }
     if (delay) {
         coyopedal_fx_process_delay(samples, kBlockFrames);

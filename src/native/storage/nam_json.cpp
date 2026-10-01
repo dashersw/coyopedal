@@ -109,7 +109,10 @@ std::uint32_t crc(const std::uint8_t* p, std::size_t n) {
 }
 } // namespace
 bool pedalboard_parse_nam(const char* json, std::size_t length, std::uint8_t* out,
-                          std::size_t capacity, char* error, std::size_t error_capacity) {
+                          std::size_t capacity, char* error, std::size_t error_capacity,
+                          bool* includes_cabinet) {
+    if (includes_cabinet)
+        *includes_cabinet = false;
     auto fail = [&](const char* message) {
         if (error && error_capacity)
             std::snprintf(error, error_capacity, "%s", message);
@@ -179,5 +182,14 @@ bool pedalboard_parse_nam(const char* json, std::size_t length, std::uint8_t* ou
     put(out + 12, 12146);
     put(out + 16, crc(out + 32, 48616 - 32));
     put(out + 20, 32);
+    if (includes_cabinet) {
+        // Metadata describes the whole capture, including a slimmable container.
+        // Missing/unknown metadata stays usable with an external IR; names and
+        // training settings are not evidence that a cabinet is baked in.
+        const auto* gear = get(get(root, "metadata"), "gear_type");
+        if (absent(gear) && model != root)
+            gear = get(get(model, "metadata"), "gear_type");
+        *includes_cabinet = text(gear, "amp_cab") || text(gear, "amp_pedal_cab");
+    }
     return true;
 }

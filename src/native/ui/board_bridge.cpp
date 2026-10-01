@@ -9,6 +9,7 @@
 #include "board_ui.h"
 #include "control.h"
 #include "audio/effects.h"
+#include "audio/cabinet.h"
 #include "audio/tuner.h"
 #include "audio/usb_frame_processor.h"
 #include <algorithm>
@@ -41,6 +42,13 @@ void s3_v1_ui_wake();
 
 namespace {
 int screen{}, selected{}, parameter{};
+unsigned cabinet_page{};
+unsigned cabinet_pages() {
+    return (pedalboard_cabinet_count() + 4) / 4;
+}
+unsigned cabinet_row_index(unsigned row) {
+    return cabinet_page * 4 + row;
+}
 // The last pointer position, in the layout's POINTS. A pointer event carries
 // physical pixels, so the ratio between them is the device pixel ratio -- which
 // is 2 on the panel (gea.cssDevicePixelRatio in package.json) and is NOT 2
@@ -378,6 +386,18 @@ double pbGet(double key) {
         return internal_speaker_enabled();
     case 81:
         return internal_speaker_available();
+    case 92:
+        return coyopedal_active_capture_includes_cabinet();
+    case 82:
+        return pedalboard_cabinet_enabled();
+    case 83:
+        return pedalboard_cabinet_count();
+    case 84:
+        return cabinet_page;
+    case 85:
+        return cabinet_pages();
+    case 86:
+        return std::min(4U, pedalboard_cabinet_count() + 1 - cabinet_page * 4);
     case 60:
     case 61: {
         coyopedal_tuner_reading_t r{};
@@ -385,6 +405,15 @@ double pbGet(double key) {
         return k == 60 ? r.voiced : r.cents;
     }
     default:
+        if (k >= 88 && k < 92) {
+            coyopedal_cabinet_setting_t setting{};
+            pedalboard_cabinet_setting(&setting);
+            const unsigned index = cabinet_row_index(k - 88);
+            return index == 0
+                       ? !setting.enabled
+                       : setting.enabled &&
+                             std::strcmp(setting.path, pedalboard_cabinet_path(index - 1)) == 0;
+        }
         if (k >= 32 && k < 32 + static_cast<int>(kBrowseRowsPerPage)) {
             const BrowseRow* const row = browse_row(static_cast<unsigned>(k - 32));
             return row != nullptr && !row->folder && !row->card &&
@@ -442,6 +471,15 @@ std::string pbLabel(double kind, double index) {
         return internal_speaker_status();
     const unsigned i = static_cast<unsigned>(index);
     switch (static_cast<int>(kind)) {
+    case 22: {
+        coyopedal_cabinet_setting_t setting{};
+        pedalboard_cabinet_setting(&setting);
+        return setting.path;
+    }
+    case 23: {
+        const unsigned row = cabinet_row_index(i);
+        return row == 0 ? "Bypass cabinet" : pedalboard_cabinet_path(row - 1);
+    }
     case 0: {
         const auto active = coyopedal_active_model();
         return active < coyopedal_model_count ? coyopedal_models[active].name : "SELECT AN AMP";
@@ -593,6 +631,37 @@ void pbAction(double action, double index, double value) {
     error[0] = '\0';
     preset_status.clear();
     switch (static_cast<int>(action)) {
+    case 17:
+        if (coyopedal_active_capture_includes_cabinet())
+            break;
+        pedalboard_cabinet_scan();
+        cabinet_page = 0;
+        screen = 11;
+        break;
+    case 18: {
+        if (coyopedal_active_capture_includes_cabinet())
+            break;
+        const unsigned row = cabinet_row_index(static_cast<unsigned>(index));
+        if (index < 0 || index >= 4 || row > pedalboard_cabinet_count()) {
+            ok = false;
+            break;
+        }
+        coyopedal_cabinet_setting_t setting{};
+        pedalboard_cabinet_setting(&setting);
+        setting.enabled = row != 0;
+        if (row)
+            std::snprintf(setting.path, sizeof setting.path, "%s",
+                          pedalboard_cabinet_path(row - 1));
+        ok = pedalboard_cabinet_apply(&setting, error, sizeof error);
+        if (!ok)
+            return;
+        break;
+    }
+    case 19:
+        cabinet_page = static_cast<unsigned>(
+            std::clamp(static_cast<int>(cabinet_page) + static_cast<int>(value), 0,
+                       static_cast<int>(cabinet_pages()) - 1));
+        break;
     case 0:
         ok = coyopedal_ui_control_set_model(index);
         if (ok)

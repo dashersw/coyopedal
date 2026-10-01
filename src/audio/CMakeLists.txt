@@ -3,6 +3,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/block_frames.cmake")
 
 idf_component_register(
     SRCS
+    "${COYOPEDAL_PEDAL_ROOT}/src/audio/cabinet_ir.cpp"
+    "${COYOPEDAL_PEDAL_ROOT}/src/audio/cabinet_fft64.S"
+    "${COYOPEDAL_PEDAL_ROOT}/src/audio/ir_wav.cpp"
     "${COYOPEDAL_PEDAL_ROOT}/src/audio/effects.cpp"
     "${COYOPEDAL_PEDAL_ROOT}/src/audio/processor.cpp"
     "${COYOPEDAL_PEDAL_ROOT}/src/audio/tuner.cpp"
@@ -35,3 +38,5 @@ set_source_files_properties(
         COMPILE_OPTIONS
         "-funsafe-math-optimizations;-ffinite-math-only;-fno-signed-zeros;-fno-trapping-math;-ffp-contract=fast"
 )
+set_source_files_properties("${COYOPEDAL_PEDAL_ROOT}/src/audio/cabinet_ir.cpp"
+                            PROPERTIES COMPILE_OPTIONS "-ffp-contract=fast")

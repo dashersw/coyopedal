@@ -4,11 +4,13 @@
 
 #include "flash_storage.h"
 #include "audio/usb_frame_processor.h"
+#include "audio/cabinet.h"
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "sd_models.h"
 
 static unsigned active_model = COYOPEDAL_MODEL_NONE;
+static bool active_includes_cabinet;
 
 // The library index, read out of the library image at boot. Zero entries is what an
 // unprogrammed board looks like.
@@ -26,8 +28,8 @@ static unsigned char staging[MODEL_STAGING_MAX];
 
 // The factory image's shape, which has to match tools/models_to_bin.py.
 #define CONTAINER_HEADER 16U
-#define CONTAINER_ENTRY 64U
-#define CONTAINER_VERSION 1U
+#define CONTAINER_ENTRY 68U
+#define CONTAINER_VERSION 2U
 
 static unsigned read_u32(const unsigned char* const bytes) {
     return (unsigned)bytes[0] | ((unsigned)bytes[1] << 8) | ((unsigned)bytes[2] << 16) |
@@ -54,7 +56,7 @@ bool coyopedal_models_init(void) {
     }
     const unsigned version = (unsigned)header[4] | ((unsigned)header[5] << 8);
     unsigned count = (unsigned)header[6] | ((unsigned)header[7] << 8);
-    if (version != CONTAINER_VERSION || count == 0U) {
+    if ((version != 1U && version != CONTAINER_VERSION) || count == 0U) {
         return false;
     }
     if (count > COYOPEDAL_MODEL_MAX) {
@@ -63,14 +65,16 @@ bool coyopedal_models_init(void) {
         count = COYOPEDAL_MODEL_MAX;
     }
 
+    const unsigned entry_size = version == 1U ? 64U : CONTAINER_ENTRY;
     for (unsigned index = 0; index < count; ++index) {
-        unsigned char entry[CONTAINER_ENTRY];
-        if (!coyopedal_factory_models_read(CONTAINER_HEADER + index * CONTAINER_ENTRY, entry,
-                                           sizeof entry)) {
+        unsigned char entry[CONTAINER_ENTRY] = {0};
+        if (!coyopedal_factory_models_read(CONTAINER_HEADER + index * entry_size, entry,
+                                           entry_size)) {
             return false;
         }
         coyopedal_model_t* const model = &coyopedal_models[coyopedal_model_count];
         model->user_model = false;
+        model->includes_cabinet = (read_u32(&entry[64]) & 1U) != 0;
         model->sd_model = false;
         model->sd_json = false;
         model->sd_filename[0] = '\0';
@@ -111,9 +115,10 @@ static bool load_model_impl(const unsigned index, char* const error, const size_
 
     // Pull the profile out of storage first. A read failure here is a
     // storage fault rather than a bad profile, so it is reported separately.
+    bool includes_cabinet = model->includes_cabinet;
     const bool read_ok =
-        model->sd_model
-            ? pedalboard_sd_model_read(model, staging, sizeof staging, error, error_capacity)
+        model->sd_model     ? pedalboard_sd_model_read(model, staging, sizeof staging, error,
+                                                       error_capacity, &includes_cabinet)
         : model->user_model ? coyopedal_flash_store_read(model->offset, staging, model->size)
                             : coyopedal_factory_models_read(model->offset, staging, model->size);
     if (!read_ok) {
@@ -135,12 +140,17 @@ static bool load_model_impl(const unsigned index, char* const error, const size_
         active_model = coyopedal_pedal_dsp_model_loaded() && coyopedal_model_count > 0U
                            ? 0U
                            : COYOPEDAL_MODEL_NONE;
+        // Engine rejection restores the embedded Ampete V30 fallback.
+        active_includes_cabinet = coyopedal_pedal_dsp_model_loaded();
+        pedalboard_cabinet_capture_changed(active_includes_cabinet);
         copy_error(error, error_capacity, reason);
         ESP_LOGE("models", "profile %s rejected: %s", model->id, reason);
         return false;
     }
 
     active_model = index;
+    active_includes_cabinet = includes_cabinet;
+    pedalboard_cabinet_capture_changed(includes_cabinet);
     ESP_LOGI("models", "profile %s loaded, %u bytes", model->id, model->size);
     return true;
 }
@@ -168,13 +178,23 @@ unsigned coyopedal_active_model(void) {
     return active_model;
 }
 
+bool coyopedal_active_capture_includes_cabinet(void) {
+    return active_includes_cabinet;
+}
+
 static char last_model_error[96];
 const char* coyopedal_last_model_error(void) {
     return last_model_error;
 }
 bool coyopedal_load_model(unsigned index, char* error, size_t capacity) {
     last_model_error[0] = '\0';
+    if (!coyopedal_pedal_dsp_begin_update()) {
+        copy_error(last_model_error, sizeof last_model_error, "audio pipeline busy");
+        copy_error(error, capacity, last_model_error);
+        return false;
+    }
     const bool ok = load_model_impl(index, last_model_error, sizeof last_model_error);
+    coyopedal_pedal_dsp_end_update();
     copy_error(error, capacity, last_model_error);
     return ok;
 }

@@ -63,6 +63,13 @@ export class Amplifiers extends Component {
             </button>
           </div>
         )}
+        {!store.captureIncludesCabinet && (
+          <button class="pill header-action amp-cabinet" onClick={() => store.command(17)}>
+            <span>Cab</span>
+            {store.cabinetEnabled && <span class="status-dot dot-on" />}
+            {!store.cabinetEnabled && <span class="status-dot dot-off" />}
+          </button>
+        )}
         {store.browseTotal === 0 && <div class="screen-caption empty-library">No captures</div>}
       </div>
     )

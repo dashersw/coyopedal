@@ -1,5 +1,8 @@
 // Browser-only fixture adapter. No writes to the board or production presets.
-export function createPanelPreviewStore(storage) {
+export function createPanelPreviewStore(
+  storage,
+  captureMetadata = [{ gear_type: 'amp_cab' }, { gear_type: 'amp_cab' }, { gear_type: 'amp' }],
+) {
   const key = 'pedalboard-preset-preview-v1'
   const names = ['Hard Gate', 'Studio VCA', 'Klon', 'Spring', 'Chorus', 'Digital']
   const paramNames = [
@@ -52,6 +55,7 @@ export function createPanelPreviewStore(storage) {
   const catalogue = [
     { folder: '', name: 'Diezel Herbert C1 V30' },
     { folder: '', name: 'Ampete One C4 V30' },
+    { folder: '', name: 'Ampete One C4 (amp only)' },
   ]
   const card = (folder, ...names) => {
     for (const name of names) catalogue.push({ folder: `SD card/${folder}/`, name })
@@ -138,9 +142,11 @@ export function createPanelPreviewStore(storage) {
   let presets = [
     fresh('Rhythm', 0, [1, 1, 1, 0, 0, 0]),
     fresh('Lead', 0, [1, 1, 1, 0, 0, 1]),
-    fresh('Clean', 1, [1, 1, 0, 0, 1, 0]),
-    fresh('Ambient', 2, [1, 0, 0, 1, 1, 1]),
+    fresh('Ampete Heavy', 2, [1, 0, 0, 1, 0, 1]),
+    fresh('Ambient', 3, [1, 0, 0, 1, 1, 1]),
   ]
+  presets[2].cabinetPath = 'Factory/V30 SM57.wav'
+  presets[2].cabinetEnabled = true
   presets[1].params[5] = [440, 36, 24]
   presets[3].params[3] = [52, 75, 45, 85]
   let error = '',
@@ -148,6 +154,19 @@ export function createPanelPreviewStore(storage) {
     draft = '',
     params = copy(defaults)
   const state = {}
+  const cabinetFiles = [
+    'Factory/V30 SM57.wav',
+    'Factory/DV77 SM57.wav',
+    'Factory/Rockdriver e606.wav',
+    'V30.wav',
+    'Greenback.wav',
+    'Clean/G12.wav',
+    'Creamback.wav',
+    'Blue.wav',
+  ]
+  let cabinetPage = 0
+  let cabinetPath = ''
+  let cabinetEnabled = false
   const valid = (p) =>
     p &&
     typeof p.name === 'string' &&
@@ -175,7 +194,14 @@ export function createPanelPreviewStore(storage) {
     // Missing or invalid browser storage starts with the factory presets.
   }
   function config(p) {
-    return { model: p.model, ampEnabled: p.ampEnabled, enabled: p.enabled, params: p.params }
+    return {
+      model: p.model,
+      ampEnabled: p.ampEnabled,
+      enabled: p.enabled,
+      params: p.params,
+      cabinetPath: p.cabinetPath || '',
+      cabinetEnabled: !!p.cabinetEnabled,
+    }
   }
   function live() {
     return {
@@ -183,6 +209,8 @@ export function createPanelPreviewStore(storage) {
       ampEnabled: !!state[16],
       enabled: Array.from({ length: 6 }, (_, i) => (state[20 + i] ? 1 : 0)),
       params: copy(params),
+      cabinetPath,
+      cabinetEnabled,
     }
   }
   function edited() {
@@ -196,6 +224,8 @@ export function createPanelPreviewStore(storage) {
     state[16] = p.ampEnabled ? 1 : 0
     p.enabled.forEach((v, i) => (state[20 + i] = v))
     params = copy(p.params)
+    cabinetPath = p.cabinetPath || ''
+    cabinetEnabled = !!p.cabinetEnabled
     state[4] = 0
     state[31] = 0
     state[19] = 0
@@ -228,7 +258,25 @@ export function createPanelPreviewStore(storage) {
     status = ''
     load(0)
   }
+  // Test fixtures supply the same metadata carried by an original .nam file.
+  // No cabinet inference from model names or folders.
+  function includesCabinet() {
+    const gear = captureMetadata[state[12]]?.gear_type
+    return gear === 'amp_cab' || gear === 'amp_pedal_cab'
+  }
   function get(k) {
+    if (k === 92) return +includesCabinet()
+    if (k === 82) return +(cabinetEnabled && !includesCabinet())
+    if (k === 83) return cabinetFiles.length
+    if (k === 84) return cabinetPage
+    if (k === 85) return Math.ceil((cabinetFiles.length + 1) / 4)
+    if (k === 86) return Math.min(4, cabinetFiles.length + 1 - cabinetPage * 4)
+    if (k >= 88 && k < 92) {
+      const row = cabinetPage * 4 + k - 88
+      return row === 0
+        ? +!cabinetEnabled
+        : +(cabinetEnabled && cabinetPath === cabinetFiles[row - 1])
+    }
     if (k === 81) return 1
     if (k === 80) return storage?.getItem('pedalboard-speaker') === '1' ? 1 : 0
     if (k === 3) return state[3] || 251
@@ -256,6 +304,11 @@ export function createPanelPreviewStore(storage) {
     return state[k] || 0
   }
   function label(k, i) {
+    if (k === 22) return cabinetPath
+    if (k === 23) {
+      const row = cabinetPage * 4 + i
+      return row === 0 ? 'Bypass cabinet' : cabinetFiles[row - 1] || ''
+    }
     if (k === 21) return get(80) ? 'Speaker + USB output (preview)' : 'USB output only'
     if (k === 0) return captures[state[12]]
     if (k === 1) return names[i]
@@ -304,6 +357,20 @@ export function createPanelPreviewStore(storage) {
   function action(a, i, v) {
     error = ''
     status = ''
+    if ((a === 17 || a === 18) && includesCabinet()) return
+    if (a === 17) {
+      cabinetPage = 0
+      state[4] = 11
+    }
+    if (a === 18) {
+      const row = cabinetPage * 4 + i
+      if (row === 0) cabinetEnabled = false
+      else if (cabinetFiles[row - 1]) {
+        cabinetPath = cabinetFiles[row - 1]
+        cabinetEnabled = true
+      }
+    }
+    if (a === 19) cabinetPage = Math.max(0, Math.min(get(85) - 1, cabinetPage + v))
     if (a === 0) {
       state[12] = i
       state[4] = 0

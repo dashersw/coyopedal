@@ -13,11 +13,19 @@ std::vector<unsigned char> saved;
 // string. Every successful store mirrors the list as the preset document, so
 // this is also how the writer and the parser get exercised against each other.
 std::string mirrored;
+coyopedal_cabinet_setting_t cabinet{};
 bool storage_failure{}, engaged = true, amp_on = true;
 uint32_t remembered{};
 unsigned model{};
 int16_t gains[6]{};
 extern "C" {
+void pedalboard_cabinet_setting(coyopedal_cabinet_setting_t* out) {
+    *out = cabinet;
+}
+bool pedalboard_cabinet_apply(const coyopedal_cabinet_setting_t* setting, char*, size_t) {
+    cabinet = *setting;
+    return true;
+}
 coyopedal_model_t coyopedal_models[COYOPEDAL_MODEL_MAX]{};
 unsigned coyopedal_model_count = 2;
 unsigned coyopedal_active_model() {
@@ -189,4 +197,57 @@ int main() {
     assert(!panel_presets::from_json("{\"version\": 3, \"presets\": []}", 29));
     assert(std::string(panel_presets::name(0)) == "By Hand");
     assert(panel_presets::error()[0] != '\0');
+
+    std::strcpy(cabinet.path, "Clean/V30.wav");
+    cabinet.enabled = true;
+    cabinet.level = -30;
+    assert(panel_presets::edited());
+    assert(panel_presets::save());
+    assert(mirrored.find("Clean/V30.wav") != std::string::npos);
+    const auto with_ir = mirrored;
+    cabinet = {};
+    assert(panel_presets::from_json(with_ir.c_str(), with_ir.size()));
+    assert(panel_presets::load(0));
+    assert(cabinet.enabled && cabinet.level == -30 && !std::strcmp(cabinet.path, "Clean/V30.wav"));
+
+    // Upgrade an actual v3 binary layout, retaining every old field and selection.
+    struct LegacySound {
+        char profile[24];
+        int16_t amp[6], params[6][5];
+        uint8_t enabled[6], amp_on, reserved;
+    };
+    struct LegacyPreset {
+        char name[24];
+        LegacySound sound;
+    };
+    struct LegacyStore {
+        uint32_t version, count;
+        LegacyPreset presets[32];
+    } old{};
+    old.version = 3;
+    old.count = 2;
+    for (unsigned i = 0; i < 2; ++i) {
+        std::snprintf(old.presets[i].name, 24, "Kept %u", i);
+        std::strcpy(old.presets[i].sound.profile, "sd-model");
+        old.presets[i].sound.amp[0] = 17 + i;
+        old.presets[i].sound.amp_on = 1;
+        old.presets[i].sound.enabled[5] = 1;
+        old.presets[i].sound.params[5][0] = 420 + i;
+    }
+    saved.assign(reinterpret_cast<unsigned char*>(&old),
+                 reinterpret_cast<unsigned char*>(&old) + sizeof old);
+    remembered = 1;
+    panel_presets::init();
+    assert(panel_presets::count() == 2);
+    assert(panel_presets::active() == 1);
+    assert(panel_presets::load(1));
+    assert(gains[0] == 18);
+    assert(std::string(panel_presets::name(0)) == "Kept 0");
+    assert(std::string(panel_presets::name(1)) == "Kept 1");
+    assert(coyopedal_fx_enabled(COYOPEDAL_FX_DELAY));
+    assert(!cabinet.enabled && !cabinet.path[0]);
+    assert(panel_presets::save());
+    panel_presets::init();
+    assert(panel_presets::load(0));
+    assert(gains[0] == 17);
 }

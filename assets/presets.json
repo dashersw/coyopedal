@@ -31,7 +31,7 @@
     },
     {
       "name": "Ampete Heavy",
-      "profile": "volum-ampete-4-v30",
+      "profile": "volum-ampete-4-amp",
       "amp": [20, 85, -30, -10, 0, 10],
       "ampOn": true,
       "blocks": [
@@ -41,7 +41,12 @@
         { "block": "reverb", "enabled": true, "params": [0, 7, 1000, 55, 10] },
         { "block": "modulation", "enabled": false, "params": [8, 40, 16, 45, 0] },
         { "block": "delay", "enabled": true, "params": [300, 18, 10, 0, 0] }
-      ]
+      ],
+      "cabinet": {
+        "path": "Factory/V30 SM57.wav",
+        "enabled": true,
+        "level": 0
+      }
     }
   ]
 }

@@ -4,6 +4,7 @@ import { pedalboard as store } from '../stores/PedalboardStore'
 import { Chain } from './Chain'
 import { Presets } from './Presets'
 import { Amplifiers } from './Amplifiers'
+import { Cabinets } from './Cabinets'
 import { Editor } from './Editor'
 import { PresetName } from './PresetName'
 import { Confirmation } from './Confirmation'
@@ -32,12 +33,14 @@ export class App extends Component {
           <Setup />
         ) : store.screen === 9 ? (
           <Maintenance />
+        ) : store.screen === 11 ? (
+          <Cabinets />
         ) : (
           <MaintenanceConfirmation />
         )}
         {store.loading && (
           <div class="loading-model">
-            <span>Preparing amp…</span>
+            <span>{store.screen === 11 ? 'Loading cabinet…' : 'Preparing amp…'}</span>
           </div>
         )}
         {store.error && store.screen !== 6 && <div class="error-message">{store.error}</div>}

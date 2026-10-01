@@ -39,6 +39,8 @@
 }
 
 .model-row small {
+  width: max-content;
+  flex: none;
   font-size: 11px;
   color: #93a0aa;
   white-space: nowrap;
@@ -90,4 +92,9 @@
   top: 96px;
   width: calc(100% - 44px);
   text-align: center;
+}
+
+.pedalboard .amp-cabinet {
+  gap: 4px;
+  font-size: 12px;
 }

@@ -17,6 +17,10 @@ order, and that the file this repo ships is one the board can read.
 import json
 import pathlib
 import re
+import struct
+import subprocess
+import sys
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -139,6 +143,56 @@ class ShippedDocument(unittest.TestCase):
         library = {entry["id"] for entry in json.loads(MANIFEST.read_text())}
         for preset in self.document["presets"]:
             self.assertIn(preset["profile"], library)
+
+    def test_third_preset_pairs_an_amp_only_capture_with_an_embedded_cabinet(self):
+        library = {entry["id"]: entry for entry in json.loads(MANIFEST.read_text())}
+        third = self.document["presets"][2]
+        self.assertEqual(library[third["profile"]]["gearType"], "amp")
+        self.assertEqual(
+            third["cabinet"], {"path": "Factory/V30 SM57.wav", "enabled": True, "level": 0}
+        )
+        for preset in self.document["presets"][:2]:
+            self.assertEqual(library[preset["profile"]]["gearType"], "amp_cab")
+            self.assertFalse(preset.get("cabinet", {}).get("enabled", False))
+        embedded = json.loads((ROOT / "package.json").read_text())["gea"]["targets"]["esp32"][
+            "embedFiles"
+        ]
+        for filename in (
+            "jester-v30-sm57.wav",
+            "jester-dv77-sm57.wav",
+            "jester-rockdriver-e606.wav",
+        ):
+            self.assertIn(f"assets/cabinets/{filename}", embedded.values())
+
+    def test_factory_container_preserves_capture_metadata_and_model_bytes(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "build") as temporary:
+            output = pathlib.Path(temporary) / "models.bin"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "tools/models_to_bin.py"),
+                    str(MANIFEST),
+                    str(ROOT),
+                    str(output),
+                ],
+                check=True,
+                capture_output=True,
+            )
+            image = output.read_bytes()
+        magic, version, count, size, reserved = struct.unpack_from("<4sHHII", image)
+        entries = json.loads(MANIFEST.read_text())
+        self.assertEqual(
+            (magic, version, count, size, reserved), (b"TMDL", 2, len(entries), len(image), 0)
+        )
+        for index, entry in enumerate(entries):
+            offset, length, identifier, name, flags = struct.unpack_from(
+                "<II24s32sI", image, 16 + index * 68
+            )
+            self.assertEqual(identifier.rstrip(b"\0").decode(), entry["id"])
+            self.assertEqual(name.rstrip(b"\0").decode(), entry["name"])
+            self.assertEqual(flags, int(entry["gearType"] in ("amp_cab", "amp_pedal_cab")))
+            self.assertEqual(offset % 4, 0)
+            self.assertEqual(image[offset : offset + length], (ROOT / entry["file"]).read_bytes())
 
     def test_it_fits_the_buffer_the_board_parses_it_in(self):
         self.assertLessEqual(len(self.text.encode()), checker_constant("JSON_MAX"))

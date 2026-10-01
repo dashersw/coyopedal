@@ -6,6 +6,31 @@ const memory = () => {
   const data = new Map()
   return { getItem: (key) => data.get(key), setItem: (key, value) => data.set(key, value) }
 }
+test('cabinet selection pages safely and survives preset save, recall and reload', () => {
+  const storage = memory()
+  const s = createPanelPreviewStore(storage)
+  s.action(0, 2)
+  s.action(17)
+  assert.equal(s.get(4), 11)
+  assert.equal(s.get(86), 4)
+  assert.equal(s.label(23, 0), 'Bypass cabinet')
+  s.action(19, 0, 1)
+  assert.equal(s.get(86), 4)
+  s.action(18, 0)
+  assert.equal(s.label(22), 'V30.wav')
+  assert.equal(s.get(82), 1)
+  assert.equal(s.get(18), 1)
+  s.action(9)
+  s.action(8, 1)
+  assert.equal(s.get(82), 0)
+  s.action(8, 0)
+  assert.equal(s.get(82), 1)
+  assert.equal(createPanelPreviewStore(storage).label(22), 'V30.wav')
+  s.action(17)
+  s.action(18, 0)
+  assert.equal(s.get(82), 0)
+  assert.equal(s.label(22), 'V30.wav')
+})
 test('save and reload restores amp, bypass, effects and parameters independently of master/tuner', () => {
   const storage = memory(),
     s = createPanelPreviewStore(storage)
@@ -21,7 +46,7 @@ test('save and reload restores amp, bypass, effects and parameters independently
   s.action(4)
   assert.equal(s.get(18), 0)
   s.action(8, 2)
-  assert.equal(s.get(12), 1)
+  assert.equal(s.get(12), 2)
   assert.equal(s.get(16), 1)
   s.action(8, 0)
   assert.equal(s.get(12), 3)
@@ -85,4 +110,15 @@ test('invalid persisted presets fall back to usable defaults', () => {
     assert.equal(s.get(26), 4)
     assert.equal(s.get(18), 0)
   }
+})
+
+test('third preview preset uses the amp-only capture and its factory cabinet', () => {
+  const s = createPanelPreviewStore()
+  s.action(8, 2)
+  assert.equal(s.label(9), 'Ampete Heavy')
+  assert.equal(s.get(12), 2)
+  assert.equal(s.get(92), 0)
+  assert.equal(s.get(82), 1)
+  assert.equal(s.label(22), 'Factory/V30 SM57.wav')
+  assert.equal(s.get(18), 0)
 })

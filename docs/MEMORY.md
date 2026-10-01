@@ -56,20 +56,39 @@ rest holds the image's IRAM and static data, FreeRTOS, the DSP stage stacks,
 the USB host's and display's DMA buffers, the effects arena and a few system
 task stacks. In maintenance mode the radios use the space instead.
 
-The optional internal speaker uses a PSRAM worker stack and a 2 KiB PSRAM
-sample queue. Its I2S DMA buffers must remain internal. The app selects
-`GEA_AUDIO_DMA_DESCRIPTORS=3` and `GEA_AUDIO_DMA_FRAMES=128`; the codec's media
-playback defaults of six 240-frame descriptors exhaust the remaining internal
-heap when USB audio and the NAM graph are already running. Check both output
-paths on hardware after changing these values.
-The speaker worker runs on core 0 at priority 18, below USB (20) and DSP stage
-A (19). Its clock-drift interpolation uses single precision so the ESP32-S3
-can execute it in hardware. Speaker drop counters must be checked independently
-of the USB and DSP counters.
-On the LCD 3.5B-C, 64-frame DMA buffers dropped speaker samples despite clean
-USB output. With 128-frame buffers and 16-bit initial codec slots, a 30-second
-run sustained 1,874–1,876 speaker blocks per five seconds with zero steady-state
-speaker drops/underruns or DSP deadline misses. Listening confirmed clean output.
+The optional internal speaker uses a PSRAM worker stack and a 4 KiB PSRAM
+sample queue. Its I2S DMA buffers must remain internal. The base profile keeps
+three 128-frame DMA descriptors; the LCD 3.5B-C profile uses three 160-frame
+descriptors. The codec's
+media playback defaults of six 240-frame descriptors exhaust the remaining
+internal heap when USB and NAM are already running. Check both output paths
+on hardware after changing these values.
+
+Core 0 uses priorities USB 20, DSP stage A 19, speaker and UI frame scheduler 18,
+and UI runtime and touch 17. The app applies its frame priority at task creation
+because the released target otherwise fixes the scheduler at 23.
+Sharing the DSP priority worsened stage-A wall times through time slicing.
+The worker writes two DMA periods per wake (256 samples in the base profile,
+320 on the LCD), and its single precision drift interpolation targets 384 or
+448 queued samples respectively. The larger
+PSRAM queue provides room for brief scheduling delays without raising that
+steady-state target. The resampler target also supports larger write batches
+without falling below one complete batch at the slow-clock equilibrium.
+Counters pass through atomics to the priority-1 heartbeat; the realtime worker
+never prints them. Codec setup runs with DSP drained at boot, and the worker
+only writes NVS when the requested setting differs from the saved setting.
+
+The LCD 3.5B-C profile reserves its minimum 1,280-byte flush stripe statically.
+Otherwise the heap allocator refuses a stripe unless another 768 DMA bytes
+remain for Wi-Fi, which audio mode does not run. The app linker fragment keeps
+just the target's flush-pool symbol in internal DRAM while the other display
+state stays in PSRAM. A strong reference and startup DMA-pointer check catch
+both a target symbol rename and an incorrect placement. The static pool keeps
+the working display independent of the remaining DMA heap after speaker setup. Do not
+qualify audio results unless the audio-mode Gea bootstrap also succeeds.
+
+The one-time Gea initialization task may use either core below all audio
+tasks, rather than waiting exclusively for the nearly saturated stage B.
 
 ## The NAM bank arena
 
@@ -110,6 +129,36 @@ larger regions for histories. It uses ESP-IDF's private TLSF interface, so
 review it when upgrading ESP-IDF.
 
 ## The effects arena
+
+The optional 1,024-tap cabinet IR uses one 19,904-byte aligned PSRAM allocation
+for coefficients, input history, transform workspace and overlap history. It
+claims no internal heap. The 1,920-byte workspace fits in the resident cache
+region rather than competing with speaker DMA and the panel's minimum flush
+stripe for contiguous internal memory. Sixteen input blocks suffice because
+stage B completes every history read before returning the slot to stage A.
+Four adjacent frequency bins are grouped, with
+history padding to avoid power-of-two cache-set collisions. The existing
+transport slot's two channels hold the output block and its overlap tail; no
+extra per-slot buffer is allocated.
+
+Stage A performs the inverse FFT while stage B transforms the next block.
+Their two 512-byte FFT arrays are separate; twiddle tables remain shared and
+read-only. The serial three-slot and concurrent producer/consumer tests compare
+both paths with direct convolution across history wraparound.
+
+While the IR is enabled, its aligned PSRAM allocation is resident in the S3's
+32 KiB data cache. This uses 311 of the 512 cache lines, without claiming
+additional internal heap or changing the cache size. The region occupies at
+most three of four ways in any set, leaving at least one way for other data.
+The S3 ROM cache-lock calls require the pinned 64-byte cache-line configuration;
+review them when changing the chip, cache settings or ESP-IDF. Bypass unlocks
+this region, and replacement and release unlock it before freeing it. Control
+changes drain the DSP pipeline first.
+
+Neither workspace nor history is allocated until an IR is loaded. Loading also uses a temporary 4,096-byte PSRAM tap buffer. Malformed WAVs or allocation
+failures retain the previous IR. The 64-entry path catalogue uses 6,144 bytes of
+PSRAM only after opening the cabinet selector. Cabinet state is independent of
+the fixed reverb arena.
 
 The reverb's eight Q15 tank lines (35,512 bytes) live in `g_effects_arena`, a
 35,520-byte static array in `src/native/main/main.cpp`. It is a bump allocator

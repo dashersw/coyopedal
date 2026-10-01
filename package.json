@@ -45,11 +45,11 @@
   "dependencies": {
     "@geajs/core": "latest",
     "@geastack/chips": "latest",
-    "@geastack/core": "latest",
+    "@geastack/core": "0.1.35",
     "@geastack/elements": "latest",
-    "@geastack/engine": "latest",
+    "@geastack/engine": "0.1.10",
     "@geastack/geaos": "latest",
-    "@geastack/host": "latest"
+    "@geastack/host": "0.1.12"
   },
   "gea": {
     "id": "nam-pedalboard",
@@ -93,6 +93,7 @@
           "-Wl,--wrap=tlsf_memalign_offs",
           "-Wl,--wrap=sys_thread_new",
           "-Wl,--wrap=esp_panic_handler",
+          "-Wl,--wrap=xTaskCreateStaticPinnedToCore",
           "-Wl,-u,__wrap_esp_panic_handler",
           "-Wl,-u,__wrap_sys_thread_new",
           "-Wl,-u,__wrap_tlsf_memalign_offs",
@@ -101,7 +102,10 @@
         "embedFiles": {
           "fallback-model.namb": "assets/models/volum-ampete-4-v30.namb",
           "pedalboard_factory_models": "build/factory/models.bin",
-          "v1_presets_fallback": "build/factory/presets.json"
+          "v1_presets_fallback": "build/factory/presets.json",
+          "factory-cab-v30.wav": "assets/cabinets/jester-v30-sm57.wav",
+          "factory-cab-dv77.wav": "assets/cabinets/jester-dv77-sm57.wav",
+          "factory-cab-rockdriver.wav": "assets/cabinets/jester-rockdriver-e606.wav"
         },
         "partitions": {
           "nvs": {
@@ -350,6 +354,8 @@
               "GEA_EMBEDDED_DISPLAY_NATIVE_WIDTH": 320,
               "GEA_EMBEDDED_DISPLAY_NATIVE_HEIGHT": 480,
               "GEA_EMBEDDED_DISPLAY_LANDSCAPE_COLUMN_WINDOWS": 0,
+              "GEA_EMBEDDED_DISPLAY_FLUSH_POOL_BYTES": 1280,
+              "GEA_AUDIO_DMA_FRAMES": 160,
               "GEA_BOARD_HAS_POWER": 1
             }
           },
@@ -390,7 +396,9 @@
       "src/native/storage/preset_json.c",
       "src/native/diagnostics/heap_map.c",
       "src/audio/nam/runtime_allocation_plan.c",
-      "src/native/drivers/internal_speaker.cpp"
+      "src/native/drivers/internal_speaker.cpp",
+      "src/native/storage/cabinet.cpp",
+      "src/native/storage/cabinet_files.cpp"
     ],
     "compilerPlugins": [
       "scripts/panel-host-plugin.mjs"
@@ -416,9 +424,10 @@
       "GEA_INLINE_COMPILED_STYLE_CACHE_ENTRIES": 8,
       "GEA_EMBEDDED_DEVICE_CONTROL": 0,
       "GEA_RUNTIME_COMPACT_ALLOCATION": 1,
-      "GEA_EMBEDDED_GEA_INIT_TASK_CORE": 1,
-      "GEA_EMBEDDED_RUNTIME_TASK_PRIORITY": 18,
-      "GEA_EMBEDDED_TOUCH_TASK_PRIORITY": 21,
+      "GEA_EMBEDDED_GEA_INIT_TASK_CORE": -1,
+      "GEA_EMBEDDED_RUNTIME_TASK_PRIORITY": 17,
+      "COYOPEDAL_FRAME_TASK_PRIORITY": 18,
+      "GEA_EMBEDDED_TOUCH_TASK_PRIORITY": 17,
       "GEA_SCROLL_TRACE": 0,
       "GEA_EMBEDDED_FRAME_SCHEDULER_FPS_LOG": 0,
       "GEA_EMBEDDED_RUNTIME_TASK_STACK_BYTES": 20480,

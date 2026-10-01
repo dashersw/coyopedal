@@ -22,7 +22,7 @@ changes move them, and stale numbers have already led to wrong conclusions.
 
 ## The measurement loop
 
-1. From maintenance, run `command AUDIO TRY <5..120> [ENGAGE] [MASK <n>] [MODEL <idx>]`. The
+1. From maintenance, run `command AUDIO TRY <5..300> [ENGAGE] [MASK <n>] [MODEL <idx>] [IR [idx]] [SIGNAL]`. The
    board boots into real audio for that many seconds, with radios off, then returns to
    maintenance. A timer enforces the return even if audio fails to start.
 2. Wait for the board to come back, then run `logs` to read the reboot-surviving log ring.

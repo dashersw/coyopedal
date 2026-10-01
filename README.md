@@ -88,6 +88,32 @@ switch at the top right bypasses the whole pedal, and **Tuner** opens the tuner.
 Tap the preset name to switch, save, rename, delete or create presets. A new
 preset starts from the current sound.
 
+Hold **Amp**, then tap **Cab** to select a cabinet IR. Three CC0 factory IRs
+are built in: V30/SM57, DV-77/SM57, and Rockdriver/e606. They work without an
+SD card. Factory preset 3, **Ampete Heavy**, pairs an amp-only Ampete One C4
+capture with V30/SM57. Captures identified as including a cabinet hide **Cab**
+and bypass the external IR; amp-only and unknown captures keep it available.
+Your selected IR is remembered when switching captures.
+
+For your own IRs, copy 48 kHz mono or stereo WAVs into `/ir` on the SD card; subfolders are supported. PCM16/24/32 and float32
+are accepted, stereo is averaged to mono, and the first 1,024 samples are used
+(21.3 ms). The cabinet runs after the amp and before delay and
+reverb. Its selection and bypass state are saved with the preset. Factory presets 1 and 2 bypass it because their profiles already include a cabinet.
+The LCD 3.5B-C runs the 1,024-tap IR with NAM and all six effects using a
+cache-resident PSRAM workspace and the S3's float32 transform kernel. A
+three-minute active-input run with the display and speaker enabled recorded no
+USB silence or trimming after configuration and no speaker drops or underruns
+after startup. Short core-0 stage overruns still occur, so this is not a guarantee
+of meeting every block deadline. IR gain varies between files; reduce the amp's
+Output level if the combined chain clips.
+
+You can also transfer IRs with the card left in the pedal. In maintenance mode,
+run `npm run remote -- --host PEDAL_IP ir-upload my-cab.wav` and
+`npm run remote -- --host PEDAL_IP ir-list`. Uploads validate the WAV and SHA256,
+preserve existing files, and verify the complete file by reading it back from SD.
+The authenticated `/v1/ir/upload`, `/v1/ir/download`, and `/v1/ir` endpoints only
+operate in maintenance mode.
+
 Open **Setup** from the preset screen to enable **Internal speaker** on the
 AMOLED 2.06 or LCD 3.5B/3.5B-C. It starts off and is saved separately from presets.
 When enabled, the speaker plays a mono mix of the processed signal alongside
@@ -417,9 +443,10 @@ allocates memory or places code.
 
 ## Factory captures
 
-The firmware ships with two captures from
+The firmware ships with three captures from
 [VoLum](https://github.com/guitarlum/VoLum) by Lum: **Diezel Herbert, channel 1,
-V30 cabinet** and **Ampete One, channel 4, V30 cabinet**. They are distributed
+V30 cabinet**, **Ampete One, channel 4, V30 cabinet**, and **Ampete One,
+channel 4, amp only**. They are distributed
 under the MIT License; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Contributing

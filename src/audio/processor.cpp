@@ -116,7 +116,7 @@ void Processor::set_bypass(const bool bypass) noexcept {
     bypass_.store(bypass, std::memory_order_relaxed);
 }
 
-bool Processor::bypassed() const noexcept {
+COYOPEDAL_PEDAL_BLOCK_HOT bool Processor::bypassed() const noexcept {
     return bypass_.load(std::memory_order_relaxed);
 }
 

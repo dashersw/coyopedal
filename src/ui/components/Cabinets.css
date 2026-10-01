@@ -1,0 +1,9 @@
+.cabinet-hint {
+  position: absolute;
+  left: 22px;
+  top: 160px;
+  width: calc(100% - 44px);
+  text-align: center;
+  font-size: 11px;
+  color: #93a0aa;
+}

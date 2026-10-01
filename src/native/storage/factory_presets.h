@@ -8,6 +8,7 @@
 // For the block count and the model-id width a preset record is built from.
 #include "model_catalog.h"
 #include "audio/effects.h"
+#include "audio/cabinet.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -105,6 +106,7 @@ typedef struct {
     // the same document wherever it is written down, both use this.
     bool amp_on;
     coyopedal_block_setting_t blocks[COYOPEDAL_FX_BLOCK_COUNT];
+    coyopedal_cabinet_setting_t cabinet;
 } coyopedal_preset_record_t;
 
 // Reads one preset out of the RAM table. False for an index the board does not

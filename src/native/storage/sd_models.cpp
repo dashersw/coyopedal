@@ -187,6 +187,12 @@ extern "C" bool pedalboard_sd_open(void) {
     return mounted;
 }
 
+extern "C" bool pedalboard_sd_ready(void) {
+    if (!card)
+        attempted = false;
+    return mount();
+}
+
 // Short because a row is 211 points wide and the name has to fit beside it: the
 // subtitle is the hint, not the instructions.
 extern "C" const char* pedalboard_sd_hint(void) {
@@ -233,7 +239,10 @@ extern "C" void pedalboard_sd_models_scan() {
     ESP_LOGI("sd_models", "Found %u SD models", coyopedal_model_count - first);
 }
 extern "C" bool pedalboard_sd_model_read(const coyopedal_model_t* model, unsigned char* out,
-                                         size_t capacity, char* error, size_t error_capacity) {
+                                         size_t capacity, char* error, size_t error_capacity,
+                                         bool* includes_cabinet) {
+    if (includes_cabinet)
+        *includes_cabinet = false;
     auto fail = [&](const char* msg) {
         if (error && error_capacity)
             std::snprintf(error, error_capacity, "%s", msg);
@@ -279,7 +288,8 @@ extern "C" bool pedalboard_sd_model_read(const coyopedal_model_t* model, unsigne
     if (!ok)
         return fail("SD NAM read failed");
     json.get()[st.st_size] = '\0';
-    ok = pedalboard_parse_nam(json.get(), st.st_size, out, capacity, error, error_capacity);
+    ok = pedalboard_parse_nam(json.get(), st.st_size, out, capacity, error, error_capacity,
+                              includes_cabinet);
     json.reset();
     if (!ok)
         return false;

@@ -42,6 +42,63 @@ extern "C" void s3_a2full_quantize8_narrow(const std::int32_t* input, std::int16
 extern "C" void s3_a2full_quantize8_a22_s7_s8(const std::int32_t* input, std::int16_t* high,
                                               std::int8_t* low, std::int32_t right_shift,
                                               std::int32_t frames);
+extern "C" void s3_a2full_residual_check(const void* input, const std::int16_t* weights,
+                                         std::uint32_t* output, unsigned low);
+extern "C" bool pedalboard_nam_residual_check() {
+    struct alignas(16) Scratch {
+        std::int16_t input[32];
+        std::int16_t weights[256];
+        std::int16_t prefetch_padding[32];
+        std::uint32_t output[8];
+    };
+    auto* scratch = static_cast<Scratch*>(
+        heap_caps_aligned_calloc(16, 1, sizeof(Scratch), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
+    if (!scratch)
+        return false;
+    std::uint32_t random = 0x349A71DB;
+    const auto next = [&] {
+        random = random * 1664525U + 1013904223U;
+        return random;
+    };
+    bool ok = true;
+    for (unsigned low = 0; low != 3 && ok; ++low) {
+        for (unsigned trial = 0; trial < 512 && ok; ++trial) {
+            auto* bytes = reinterpret_cast<std::uint8_t*>(scratch->input);
+            const unsigned inputs = low == 2 ? 32 : 8;
+            for (unsigned i = 0; i < inputs; ++i) {
+                if (low)
+                    bytes[i] = trial == 0 ? 127 : (next() & 127);
+                else
+                    scratch->input[i] =
+                        trial < 2
+                            ? (trial == 0 ? INT16_MIN : INT16_MAX)
+                            : std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(next() >> 16));
+            }
+            for (unsigned i = 0; i < inputs * 8; ++i)
+                scratch->weights[i] =
+                    trial < 2
+                        ? (trial == 0 ? INT16_MIN : INT16_MAX)
+                        : std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(next() >> 16));
+            s3_a2full_residual_check(scratch->input, scratch->weights, scratch->output, low);
+            for (unsigned lane = 0; lane < 8; ++lane) {
+                std::int64_t expected = 0;
+                for (unsigned i = 0; i < inputs; ++i)
+                    expected += std::int64_t(scratch->weights[i * 8 + lane]) *
+                                (low ? bytes[i] : scratch->input[i]);
+                if (scratch->output[lane] != static_cast<std::uint32_t>(expected)) {
+                    ESP_LOGE("nam", "Residual check failed: limb=%u trial=%u lane=%u", low, trial,
+                             lane);
+                    ok = false;
+                    break;
+                }
+            }
+        }
+    }
+    heap_caps_free(scratch);
+    if (ok)
+        ESP_LOGI("nam", "S3 residual check: 12288 integer lanes bit exact");
+    return ok;
+}
 #else
 namespace {
 

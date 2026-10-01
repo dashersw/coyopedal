@@ -68,7 +68,7 @@ reason is a measurement on the device.
   `gea.targets.esp32` in `package.json`. Don't add a board `CMakeLists.txt`, a
   partition CSV or a display driver.
 - Don't edit generated C++ under `.gea/build/`, and don't patch the Gea
-  packages in place: they track `latest` and carry no local patches, so a fix
+  packages in place: they come from the registry and carry no local patches, so a fix
   for one belongs upstream and a board-specific need is asked for through
   `gea.defines`. See [src/ui/README.md](src/ui/README.md).
 - Users copy original `.nam` files to the SD card, and the pedal prepares them.
