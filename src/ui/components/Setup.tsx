@@ -9,10 +9,12 @@ export class Setup extends Component {
       <div>
         <Header title="Setup" subtitle="" />
         <div class="screen-caption">Wi-Fi and BLE are off</div>
-        <button class="wide first" onClick={() => store.toggleSpeaker()}>
-          Internal speaker: {store.speakerEnabled ? 'On' : 'Off'}
-        </button>
-        <div class="speaker-description">{store.speakerStatus}</div>
+        {store.speakerAvailable && (
+          <button class="wide first" onClick={() => store.toggleSpeaker()}>
+            Internal speaker: {store.speakerEnabled ? 'On' : 'Off'}
+          </button>
+        )}
+        {store.speakerAvailable && <div class="speaker-description">{store.speakerStatus}</div>}
         <button class="wide third" onClick={() => store.enterMaintenance(false)}>
           Maintenance mode
         </button>
