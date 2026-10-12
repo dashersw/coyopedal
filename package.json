@@ -1,5 +1,5 @@
 {
-  "name": "esp32-s3-nam-pedalboard",
+  "name": "coyopedal",
   "license": "GPL-3.0-only",
   "version": "0.1.0",
   "private": true,
@@ -52,8 +52,8 @@
     "@geastack/host": "0.1.12"
   },
   "gea": {
-    "id": "nam-pedalboard",
-    "name": "NAM Pedalboard",
+    "id": "coyopedal",
+    "name": "CoyoPedal",
     "entry": "src/ui/index.tsx",
     "runtime": "gea",
     "targets": {

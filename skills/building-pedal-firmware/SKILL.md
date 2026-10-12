@@ -46,7 +46,7 @@ The image remains `build/pedalboard.bin`.
 - **Firmware image: `build/pedalboard.bin`.** `gea.targets.esp32.output` makes every build copy
   the app image there (`--output <file>` overrides it). A gea CLI without `output` support
   ignores the field, and the image is then only in the build tree.
-- The ESP-IDF build tree is `.gea/build/esp32-s3-touch-amoled-2.06/app-builds/nam-pedalboard/`.
+- The ESP-IDF build tree is `.gea/build/esp32-s3-touch-amoled-2.06/app-builds/coyopedal/`.
   Don't send people there.
 - `build/esp32/` is left over from before the gea CLI. It is stale.
 - `gea.targets.esp32` in `package.json` declares the native component directories, IDF

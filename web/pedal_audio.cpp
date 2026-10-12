@@ -330,7 +330,7 @@ void node_created(EMSCRIPTEN_WEBAUDIO_T context, const bool success, void*) {
     options.numberOfOutputs = 1;
     options.outputChannelCounts = &channels;
     const EMSCRIPTEN_AUDIO_WORKLET_NODE_T node = emscripten_create_wasm_audio_worklet_node(
-        context, "nam-pedalboard", &options, &process, nullptr);
+        context, "coyopedal", &options, &process, nullptr);
     pedal_web_wire_graph(context, node);
     g_ready.store(1, std::memory_order_release);
 }
@@ -340,7 +340,7 @@ void thread_started(const EMSCRIPTEN_WEBAUDIO_T context, const bool success, voi
         return;
     }
     WebAudioWorkletProcessorCreateOptions options{};
-    options.name = "nam-pedalboard";
+    options.name = "coyopedal";
     emscripten_create_wasm_audio_worklet_processor_async(context, &options, &node_created, nullptr);
 }
 

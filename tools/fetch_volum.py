@@ -29,7 +29,7 @@ https://github.com/{repository}/blob/{tag}/LICENSE
 
 
 def fetch(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "nam-pedalboard"})
+    request = urllib.request.Request(url, headers={"User-Agent": "coyopedal"})
     with urllib.request.urlopen(request, timeout=60) as response:
         return response.read()
 

@@ -71,7 +71,7 @@ GEATSC2_GEA_PLUGIN="$PACKAGES/geatsc-plugin-gea/dist/host-shims" \
   GEA_WEB_DIST_ROOT="$BUILD/dist" \
   GEA_WEB_PUBLIC_ROOT="$BUILD/public" \
   GEA_BUILD_CONFIG_JSON="$BUILD/gea-build-config.json" \
-  bash "$SIMULATOR/targets/web/build-web.sh" nam-pedalboard-web
+  bash "$SIMULATOR/targets/web/build-web.sh" coyopedal-web
 
 # The two factory images the page installs into the board, packed exactly as the
 # esp32 prebuild packs them (gea.targets.esp32.prebuild). The page reads the same
@@ -81,8 +81,8 @@ node "$REPO/scripts/pack-factory-assets.mjs"
 # web/ is the deployable site root: everything the page loads sits under it, so
 # the same directory serves locally and uploads to a static host unchanged.
 mkdir -p "$REPO/web/dist/factory"
-cp "$BUILD/dist/nam-pedalboard-web/module.js" "$REPO/web/dist/module.js"
-cp "$BUILD/dist/nam-pedalboard-web/module.wasm" "$REPO/web/dist/module.wasm"
+cp "$BUILD/dist/coyopedal-web/module.js" "$REPO/web/dist/module.js"
+cp "$BUILD/dist/coyopedal-web/module.wasm" "$REPO/web/dist/module.wasm"
 cp "$REPO/build/factory/models.bin" "$REPO/web/dist/factory/models.bin"
 cp "$REPO/build/factory/presets.json" "$REPO/web/dist/factory/presets.json"
 # Every file under web/dist gets a version on its URL, because the page names

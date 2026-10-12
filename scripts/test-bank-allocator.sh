@@ -38,7 +38,7 @@ if [[ -z "$idf_path" ]]; then
   # that has never built the firmware is the common case, and it reported
   # nothing at all.
   description=""
-  for candidate in .gea/build/*/app-builds/nam-pedalboard/project_description.json; do
+  for candidate in .gea/build/*/app-builds/coyopedal/project_description.json; do
     if [[ -f "$candidate" ]]; then
       description="$candidate"
       break

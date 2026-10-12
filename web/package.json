@@ -1,11 +1,11 @@
 {
-  "name": "nam-pedalboard-web",
+  "name": "coyopedal-web",
   "license": "GPL-3.0-only",
   "private": true,
   "version": "0.0.0",
   "gea": {
-    "id": "nam-pedalboard-web",
-    "name": "NAM Pedalboard Web",
+    "id": "coyopedal-web",
+    "name": "CoyoPedal Web",
     "entry": "main.tsx",
     "runtime": "gea",
     "targets": {

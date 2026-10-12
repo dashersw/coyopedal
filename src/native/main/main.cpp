@@ -828,7 +828,7 @@ extern "C" void gea_app_native_boot(void) {
     report_previous_panic();
     coyopedal_remote_prepare_runtime();
     constexpr const char* kEngineDescription = "LX7-native A22 mixed-precision A2-Full";
-    ESP_LOGI(kTag, "nam-pedalboard: %s, split=%u", kEngineDescription,
+    ESP_LOGI(kTag, "coyopedal: %s, split=%u", kEngineDescription,
              static_cast<unsigned>(COYOPEDAL_PEDAL_S3_SPLIT_LAYER));
     ESP_LOGI(kTag, "S3-native masks: low=%08lx low_w16=%08lx skipped_low=%08lx",
              static_cast<unsigned long>(coyopedal::pedal::Processor::Model::kLowLayerMask),
