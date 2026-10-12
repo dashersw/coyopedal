@@ -45,11 +45,11 @@
   "dependencies": {
     "@geajs/core": "latest",
     "@geastack/chips": "latest",
-    "@geastack/core": "0.1.35",
+    "@geastack/core": "0.1.37",
     "@geastack/elements": "latest",
-    "@geastack/engine": "0.1.10",
+    "@geastack/engine": "0.1.13",
     "@geastack/geaos": "latest",
-    "@geastack/host": "0.1.12"
+    "@geastack/host": "0.1.14"
   },
   "gea": {
     "id": "coyopedal",

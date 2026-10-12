@@ -67,14 +67,19 @@ feed the host port itself; the interface needs power from your own supply.
 
 ### Everything else
 
-| Part        | Notes                                                                                     |
-| ----------- | ----------------------------------------------------------------------------------------- |
-| Audio       | A USB Audio Class 2 interface on the board's USB port, which runs as a USB host at 48 kHz |
-| Storage     | Optional microSD card, on a board that has a slot, for your own captures                  |
-| Tested with | XTONE Pro and IK Multimedia iRig HD X; iRig HD 2 through a dedicated UAC1 profile         |
+| Part        | Notes                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------ |
+| Audio       | A USB audio interface that supports 48 kHz input and output over Full-Speed USB            |
+| Storage     | Optional microSD card, on a board that has a slot, for your own captures                   |
+| Tested with | XTONE Pro; iRig HD 2 through a dedicated UAC1 profile; iRig HD X only with custom firmware |
 
-The interface is discovered from its USB descriptors, so any interface that
-exposes a 48 kHz UAC2 input and output should work. See
+Use a Full-Speed-compatible audio interface such as the **iRig HD 2** or
+**XTONE Pro**. The ESP32-S3 cannot use High-Speed USB. The **iRig HD X was tested
+with custom firmware** that fixes its Full-Speed audio transport; stock HD X
+firmware 1.0.2 is not supported.
+
+UAC2 interfaces are discovered from their USB descriptors, but their 48 kHz
+input and output must also work at Full Speed. See
 [USB audio](docs/USB_AUDIO.md) for the formats and limits.
 
 ## Using the pedal

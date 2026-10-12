@@ -20,7 +20,10 @@ Memory placement is covered in [MEMORY.md](MEMORY.md), and the USB transport in
 
 The ESP32-S3 has a USB 1.1 (Full Speed) controller, so every interface runs at
 Full Speed: one packet per millisecond, 48 frames per packet at 48 kHz. The
-board has no analog audio path of its own.
+board has no analog audio path of its own. The interface must support 48 kHz
+duplex audio at Full Speed, as the iRig HD 2 and XTONE Pro do. The iRig HD X
+requires custom firmware; stock 1.0.2 is not supported. See
+[USB audio](USB_AUDIO.md) for the compatibility details.
 
 ## Signal chain
 

@@ -4,6 +4,9 @@ The pedal has no audio converters of its own. The board's USB-C port runs as a
 USB host, and a class-compliant USB audio interface provides the guitar input
 and the output. This document covers how the interface is discovered, which
 formats work, how transfers are scheduled and what the transport cannot do.
+Use an interface with working 48 kHz input and output at Full Speed, such as
+the iRig HD 2 or XTONE Pro. The iRig HD X requires our custom Full-Speed firmware;
+stock firmware 1.0.2 is not supported on this board.
 The DSP side is described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 The transport is in `src/native/drivers/usb_audio.cpp`. Descriptor discovery and
@@ -67,11 +70,11 @@ mode.
 
 ## Tested interfaces
 
-| Interface    | Class | Format at Full Speed                             | Playback pacing  |
-| ------------ | ----- | ------------------------------------------------ | ---------------- |
-| XTONE Pro    | UAC2  | Stereo in and out, 24-bit in 3-byte slots        | Capture packets  |
-| IK iRig HD X | UAC2  | Descriptor-driven, as for any UAC2 device        | From descriptors |
-| IK iRig HD 2 | UAC1  | Mono 24-bit in, stereo 16-bit out (fixed layout) | USB frames       |
+| Interface                           | Class | Format at Full Speed                             | Playback pacing |
+| ----------------------------------- | ----- | ------------------------------------------------ | --------------- |
+| XTONE Pro                           | UAC2  | Stereo in and out, 24-bit in 3-byte slots        | Capture packets |
+| IK iRig HD X (custom firmware only) | UAC2  | Mono 24-bit in, stereo 24-bit out, 4-byte slots  | Capture packets |
+| IK iRig HD 2                        | UAC1  | Mono 24-bit in, stereo 16-bit out (fixed layout) | USB frames      |
 
 The XTONE Pro routes both directions through a clock selector to a single
 source and has no feedback endpoint, so playback follows the capture packet
@@ -82,6 +85,18 @@ so only the Full Speed capture is representative of what the pedal sees.
 The iRig HD 2 is recognised by its vendor and product ID and uses fixed
 interfaces and endpoints, with the sample rate set on each endpoint in the
 UAC1 way.
+
+The HD X tested here ran custom firmware based on factory 1.0.2, identifying as
+1.0.3 (`bcdDevice 0x0103`). It advertises 192-byte capture and 384-byte playback
+packets at Full Speed and fixes the device-side packet scheduling and buffers.
+The recorded `tests/usb/hdx-dma4-configuration.bin` fixture represents this
+modified device. It is not evidence of stock HD X compatibility.
+
+A connected stock HD X advertises only 156-byte capture and 104-byte playback
+packets. At 48 kHz, its 4-byte slots require 192 bytes for mono capture and
+384 bytes for stereo playback per millisecond. Changing those limits on the
+host does not fix the device-side scheduling. No HD X-specific host quirk is
+used by CoyoPedal.
 
 Any other class-compliant interface that offers a 48 kHz duplex pair meeting
 the requirements above should work. Reports of interfaces that do or do not
@@ -150,7 +165,7 @@ output has a gap.
 
 `npm test` runs the discovery and conversion code against recorded
 configuration descriptors (`tests/usb/`) under AddressSanitizer and
-UndefinedBehaviorSanitizer. The tests cover the iRig HD X and XTONE Pro
+UndefinedBehaviorSanitizer. The tests cover the custom-firmware iRig HD X and XTONE Pro
 topologies (including the XTONE's Full Speed configuration), renumbered entity
 IDs, truncated and malformed lengths, clock traversal, rate negotiation, packet
 capacity checks and channel mapping. They do not show that a device streams
