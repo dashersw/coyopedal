@@ -6,7 +6,8 @@ description: Use when bumping any @geastack or @geajs package, when the pedal ne
 # Gea dependencies
 
 Install with `npm ci`, which installs exactly what `package-lock.json` names.
-Core, engine and host are pinned in `package.json`; other dependencies track `latest`.
+All direct `@geastack/*` dependencies are pinned to exact release versions in
+`package.json`; other dependencies track `latest`.
 The committed lockfile records the exact package set used for a build, with no
 local patches. What this pedal needs from Gea it asks for, and the rest is fixed
 upstream.

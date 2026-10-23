@@ -9,8 +9,9 @@ The firmware is a Gea app. The `gea` CLI (from `@geastack/cli`) owns the entire 
 project; this repo only declares its contributions in `package.json` under `gea`.
 
 Install the registry packages with `npm ci`. The committed package set uses
-targets 0.1.87, CLI 0.1.89, core 0.1.35, engine 0.1.10 and host 0.1.12, including compact UI storage,
-AMOLED display/runtime-stack fixes, LCD speaker support and rotated projected text.
+targets 0.1.108, CLI 0.1.108, core 0.1.49, engine 0.1.20 and host 0.1.22.
+Keep core, engine and host aligned with the targets package dependencies; newer targets
+require host sources absent from the older pinned releases.
 Build without local Gea package or compiler path overrides;
 the installed packages are sufficient. If an old CMake cache points to a local
 checkout, preserve that target's build directory outside `.gea/` and let the CLI
